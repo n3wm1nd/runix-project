@@ -46,6 +46,7 @@
             polysemy
             aeson
             http-conduit
+            autodocodec
             ];
         };
       };

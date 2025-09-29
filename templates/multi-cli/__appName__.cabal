@@ -1,0 +1,29 @@
+cabal-version: 2.4
+name: __appName__
+version: 1.0.0
+synopsis: Multi-task CLI app
+description: A multi-task CLI application built with Runix
+author: Generated
+license: MIT
+
+executable __appName__
+  main-is: Main.hs
+  build-depends:
+    base >= 4.14,
+    runix,
+    polysemy,
+    aeson,
+    -- Add your task dependencies here, e.g.:
+    -- taskOne,
+    -- taskTwo,
+  hs-source-dirs: src
+  default-language: Haskell2010
+  ghc-options: -Wall
+  default-extensions:
+    DeriveGeneric,
+    DeriveAnyClass,
+    OverloadedStrings,
+    GADTs,
+    DataKinds,
+    TypeOperators,
+    FlexibleContexts

@@ -1,0 +1,27 @@
+cabal-version: 2.4
+name: __appName__
+version: 1.0.0
+synopsis: Single-task CLI app for __taskName__
+description: A single-task CLI application built with Runix
+author: Generated
+license: MIT
+
+executable __appName__
+  main-is: Main.hs
+  build-depends:
+    base >= 4.14,
+    runix,
+    polysemy,
+    __taskName__,
+    aeson,
+  hs-source-dirs: src
+  default-language: Haskell2010
+  ghc-options: -Wall
+  default-extensions:
+    DeriveGeneric,
+    DeriveAnyClass,
+    OverloadedStrings,
+    GADTs,
+    DataKinds,
+    TypeOperators,
+    FlexibleContexts
