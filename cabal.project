@@ -1,4 +1,4 @@
 packages: runix
-          universal-llm
-          runix/tasks/dndwiki
+          libs/universal-llm
+          tasks/dndwiki
           apps/chatbot
