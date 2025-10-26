@@ -20,7 +20,6 @@ import System.Environment (lookupEnv)
 import System.Exit (exitFailure)
 import System.IO (stderr)
 import GHC.IO.Handle (hPutStr)
-import Control.Monad (unless)
 
 import Polysemy
 import Polysemy.Fail
@@ -35,19 +34,15 @@ import Runix.FileSystem.Effects
 import Runix.Logging.Effects
 import Runix.Runners.CLI.Chat (chatLoop)
 
-import UniversalLLM.Core.Types (ModelName(..), ProviderImplementation(..), ModelConfig(..), Tool(..), LLMTool(..), ToolDefinition(..), llmToolToDefinition, executeToolCall, ToolCall(..), ToolResult(..), toolResultOutput, getToolCallId, HasTools(..), Message(..))
+import UniversalLLM.Core.Types (ModelName(..), ProviderImplementation(..), ModelConfig(..), Tool(..), LLMTool(..), llmToolToDefinition, executeToolCall, ToolCall(..), HasTools(..), Message(..))
 import UniversalLLM.Providers.OpenAI (LlamaCpp(..), baseComposableProvider, openAIWithTools)
 
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import GHC.Stack
 import GHC.Generics (Generic)
-import Data.Aeson (FromJSON, ToJSON, eitherDecode, encode, Value)
-import qualified Data.Aeson as Aeson
+import Data.Aeson ()  -- Import instances only
 import Autodocodec
-import Autodocodec.Schema
-import Data.Aeson.Types (emptyObject)
-import qualified Autodocodec as ADC
 
 -- GLM3.5 reasoning model with tools support (running on local llama.cpp server)
 data GLM35 = GLM35 deriving (Show, Eq)
@@ -71,10 +66,10 @@ data LoggingToolParams = LoggingToolParams
 
 -- AutoDoCodec instance for automatic schema generation
 instance HasCodec LoggingToolParams where
-    codec = ADC.object "LoggingToolParams" $
+    codec = object "LoggingToolParams" $
         LoggingToolParams
-            <$> requiredField "message" "The message to log" ADC..= logMessage
-            <*> requiredField "level" "Log level: info, warning, or error" ADC..= logLevel
+            <$> requiredField "message" "The message to log" .= logMessage
+            <*> requiredField "level" "Log level: info, warning, or error" .= logLevel
 
 -- Logging tool result
 data LoggingToolResult = LoggingToolResult
@@ -83,10 +78,10 @@ data LoggingToolResult = LoggingToolResult
     } deriving (Show, Eq, Generic)
 
 instance HasCodec LoggingToolResult where
-    codec = ADC.object "LoggingToolResult" $
+    codec = object "LoggingToolResult" $
         LoggingToolResult
-            <$> requiredField "success" "Whether the logging succeeded" ADC..= success
-            <*> requiredField "message" "Result message" ADC..= message
+            <$> requiredField "success" "Whether the logging succeeded" .= success
+            <*> requiredField "message" "Result message" .= message
 
 -- Logging tool type - allows LLM to log messages
 data LoggingTool m = LoggingTool (LoggingToolParams -> m LoggingToolResult)
@@ -142,7 +137,7 @@ extractFromMessages :: [Message GLM35 LlamaCpp] -> ([T.Text], [ToolCall])
 extractFromMessages msgs = foldr processMessage ([], []) msgs
   where
     processMessage (AssistantText txt) (texts, calls) = (txt:texts, calls)
-    processMessage (AssistantTool call) (texts, calls) = (texts, call:calls)
+    processMessage (AssistantTool toolCall) (texts, calls) = (texts, toolCall:calls)
     processMessage (AssistantReasoning txt) (texts, calls) = (("[Thinking: " <> txt <> "]"):texts, calls)
     processMessage _ acc = acc
 

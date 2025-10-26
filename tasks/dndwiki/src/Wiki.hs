@@ -5,7 +5,6 @@
 module Wiki where
 
 import Runix.FileSystem.Effects (FileSystem, readFile, writeFile, listFiles, fileExists)
-import Runix.Logging.Effects (Logging)
 import Polysemy
 import Data.Text (Text)
 import qualified Data.Text as Text
