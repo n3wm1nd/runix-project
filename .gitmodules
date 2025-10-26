@@ -1,0 +1,6 @@
+[submodule "runix"]
+	path = runix
+	url = ./runix
+[submodule "libs/universal-llm"]
+	path = libs/universal-llm
+	url = ./libs/universal-llm
