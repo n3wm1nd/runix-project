@@ -36,7 +36,7 @@ import Runix.Logging.Effects
 import Runix.Runners.CLI.Chat (chatLoop)
 
 import UniversalLLM.Core.Types (ModelName(..), ProviderImplementation(..), ModelConfig(..), Tool(..), LLMTool(..), ToolDefinition(..), llmToolToDefinition, executeToolCall, ToolCall(..), ToolResult(..), toolResultOutput, getToolCallId, HasTools(..), Message(..))
-import UniversalLLM.Providers.OpenAI (LlamaCpp(..), baseComposableProvider, toolsComposableProvider)
+import UniversalLLM.Providers.OpenAI (LlamaCpp(..), baseComposableProvider, openAIWithTools)
 
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
@@ -56,12 +56,10 @@ instance ModelName LlamaCpp GLM35 where
     modelName _ = "GLM3.5"
 
 instance HasTools GLM35 LlamaCpp where
-    toolsComposableProvider = UniversalLLM.Providers.OpenAI.toolsComposableProvider
+    withTools = UniversalLLM.Providers.OpenAI.openAIWithTools
 
 instance ProviderImplementation LlamaCpp GLM35 where
-    getComposableProvider =
-        UniversalLLM.Providers.OpenAI.baseComposableProvider
-        <> UniversalLLM.Providers.OpenAI.toolsComposableProvider
+    getComposableProvider = withTools $ UniversalLLM.Providers.OpenAI.baseComposableProvider
 
 instance Coding GLM35
 
