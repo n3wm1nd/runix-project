@@ -12,6 +12,10 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE InstanceSigs #-}
 
 module Main where
 
@@ -25,17 +29,14 @@ import Polysemy
 import Polysemy.Fail
 import Polysemy.Error
 
-import Runix.Runner (filesystemIO, httpIO, withRequestTimeout, secretEnv, loggingIO, failLog, Coding)
-import Runix.Secret.Effects (Secret, getSecret)
+import Runix.Runner (filesystemIO, httpIO, withRequestTimeout, loggingIO, failLog, Coding)
 import Runix.LLM.Effects
-import Runix.LLM.Interpreter (LLMConfig(..), interpretLLM)
+import Runix.LLM.Interpreter 
 import Runix.HTTP.Effects
 import Runix.FileSystem.Effects
 import Runix.Logging.Effects
 import Runix.Runners.CLI.Chat (chatLoop)
 
-import UniversalLLM.Core.Types (ModelName(..), ProviderImplementation(..), ModelConfig(..), Tool(..), LLMTool(..), llmToolToDefinition, executeToolCall, ToolCall(..), HasTools(..), Message(..))
-import UniversalLLM.Providers.OpenAI (LlamaCpp(..), baseComposableProvider, openAIWithTools)
 import UniversalLLM.Providers.XMLToolCalls (withXMLToolCalls)
 
 import qualified Data.Text as T
@@ -44,6 +45,10 @@ import GHC.Stack
 import GHC.Generics (Generic)
 import Data.Aeson ()  -- Import instances only
 import Autodocodec
+import qualified UniversalLLM.Providers.OpenAI
+
+-- No ChatProvider/ChatModel wrappers - business logic is fully polymorphic
+    
 
 -- GLM4.5 model with XML-style tool calls (running on local llama.cpp server)
 data GLM45 = GLM45 deriving (Show, Eq)
@@ -110,33 +115,24 @@ loggingTool = LoggingTool $ \params -> do
         _ -> warning $ "Unknown log level: " <> lvl <> ", message: " <> msg
     return $ LoggingToolResult True ("Logged message at level: " <> lvl)
 
--- Our custom SafeEffects type with LlamaCpp LLM
-type ChatbotEffects = [FileSystem, HTTP, Logging, LLM LlamaCpp GLM45, Fail, Embed IO]
-
--- Type for the API key secret
-newtype LlamaCppApiKey = LlamaCppApiKey String
-
--- Setup LlamaCpp LLM with environment endpoint
-llamaCppLLM :: Members '[Embed IO, Fail, HTTP, Logging, Secret LlamaCppApiKey] r => Sem (LLM LlamaCpp GLM45 : r) a -> Sem r a
+-- Setup LlamaCpp LLM with environment endpoint (only place we specify concrete types)
+llamaCppLLM :: forall r a. Members '[Embed IO, Fail, HTTP, Logging] r
+            => Sem (LLM LlamaCpp GLM45 : r) a
+            -> Sem r a
 llamaCppLLM action = do
     endpoint <- embed $ lookupEnv "OPENAI_ENDPOINT"
-    LlamaCppApiKey apiKey <- getSecret
     case endpoint of
         Nothing -> fail "OPENAI_ENDPOINT environment variable is not set"
-        Just ep -> do
-            let config = LLMConfig
-                    { llmProvider = LlamaCpp
-                    , llmEndpoint = ep <> "/v1/chat/completions"
-                    , llmHeaders = [("Authorization", "Bearer " <> apiKey), ("Content-Type", "application/json")]
-                    }
-            interpretLLM config GLM45 action
+        Just ep -> interpretLlamaCpp ep LlamaCpp GLM45 action
 
 -- Our custom run stack (copying runUntrusted structure)
-runChatbot :: HasCallStack => (forall r . Members ChatbotEffects r => Sem r a) -> IO (Either String a)
-runChatbot = runM . runError . loggingIO . failLog . httpIO (withRequestTimeout 300) . filesystemIO . secretEnv LlamaCppApiKey "OPENAI_API_KEY" . llamaCppLLM
+runChatbot :: HasCallStack
+           => (forall r. Members '[FileSystem, HTTP, Logging, LLM LlamaCpp GLM45, Fail, Embed IO] r => Sem r a)
+           -> IO (Either String a)
+runChatbot = runM . runError . loggingIO . failLog . httpIO (withRequestTimeout 300) . filesystemIO . llamaCppLLM
 
--- Extract text and tool calls from assistant messages
-extractFromMessages :: [Message GLM45 LlamaCpp] -> ([T.Text], [ToolCall])
+-- Extract text and tool calls from assistant messages - pure function
+extractFromMessages :: [Message model provider] -> ([T.Text], [ToolCall])
 extractFromMessages msgs = foldr processMessage ([], []) msgs
   where
     processMessage (AssistantText txt) (texts, calls) = (txt:texts, calls)
@@ -144,12 +140,23 @@ extractFromMessages msgs = foldr processMessage ([], []) msgs
     processMessage (AssistantReasoning txt) (texts, calls) = (("[Thinking: " <> txt <> "]"):texts, calls)
     processMessage _ acc = acc
 
--- Pure display helper
-displayTexts :: Members ChatbotEffects r => [T.Text] -> Sem r ()
+-- Pure display helper - only needs IO
+displayTexts :: Member (Embed IO) r => [T.Text] -> Sem r ()
 displayTexts texts = mapM_ (embed . T.putStrLn) texts
 
--- Chatbot agent - updated for new LLM effect
-chatbotAgent :: forall r. Members ChatbotEffects r => T.Text -> [Message GLM45 LlamaCpp] -> Sem r [Message GLM45 LlamaCpp]
+-- Chatbot agent - polymorphic over provider and model
+chatbotAgent :: forall provider model r.
+                ( Member (LLM provider model) r
+                , Member Logging r
+                , Member (Embed IO) r
+                , HasTools model provider
+                , SupportsTemperature provider
+                , SupportsMaxTokens provider
+                , SupportsSystemPrompt provider
+                )
+             => T.Text
+             -> [Message model provider]
+             -> Sem r [Message model provider]
 chatbotAgent userInput history = do
     info $ "User input: " <> userInput
 
@@ -167,13 +174,25 @@ chatbotAgent userInput history = do
 
     -- Add user message and query
     let newHistory = history ++ [UserText userInput]
-    responseMsgs <- queryLLM @LlamaCpp @GLM45 configs newHistory
+    responseMsgs <- queryLLM @provider @model configs newHistory
 
     -- Process response
     handleResponse tools (newHistory ++ responseMsgs) responseMsgs
 
--- Handle responses recursively - execute tools if needed
-handleResponse :: Members ChatbotEffects r => [LLMTool (Sem r)] -> [Message GLM45 LlamaCpp] -> [Message GLM45 LlamaCpp] -> Sem r [Message GLM45 LlamaCpp]
+-- Handle responses recursively - execute tools if needed - polymorphic
+handleResponse :: forall provider model r.
+                  ( Member (LLM provider model) r
+                  , Member Logging r
+                  , Member (Embed IO) r
+                  , HasTools model provider
+                  , SupportsTemperature provider
+                  , SupportsMaxTokens provider
+                  , SupportsSystemPrompt provider
+                  )
+               => [LLMTool (Sem r)]
+               -> [Message model provider]
+               -> [Message model provider]
+               -> Sem r [Message model provider]
 handleResponse tools history responseMsgs = do
     let (texts, toolCalls) = extractFromMessages responseMsgs
     displayTexts texts
@@ -198,7 +217,7 @@ handleResponse tools history responseMsgs = do
                           , SystemPrompt "You are a helpful assistant. Be friendly and concise."
                           ]
 
-            responseMsgs' <- queryLLM @LlamaCpp @GLM45 configs newHistory
+            responseMsgs' <- queryLLM @provider @model configs newHistory
             handleResponse tools (newHistory ++ responseMsgs') responseMsgs'
 
 main :: IO ()
