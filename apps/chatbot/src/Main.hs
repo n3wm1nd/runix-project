@@ -37,7 +37,7 @@ import Runix.FileSystem.Effects
 import Runix.Logging.Effects
 import Runix.Runners.CLI.Chat (chatLoop)
 
-import UniversalLLM.Providers.XMLToolCalls (withXMLToolCalls)
+import UniversalLLM.Providers.XMLToolCalls (withXMLResponseParsing)
 
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
@@ -58,8 +58,8 @@ instance ModelName LlamaCpp GLM45 where
 
 instance HasTools GLM45 LlamaCpp where
     -- llama-cpp handles tool definitions in system prompt, but returns XML
-    -- So we use withXMLToolCalls to parse XML responses into proper tool calls
-    withTools = withXMLToolCalls . UniversalLLM.Providers.OpenAI.openAIWithTools
+    -- So we use withXMLResponseParsing to parse XML responses into proper tool calls
+    withTools = withXMLResponseParsing . UniversalLLM.Providers.OpenAI.openAIWithTools
 
 instance ProviderImplementation LlamaCpp GLM45 where
     getComposableProvider = withTools $ UniversalLLM.Providers.OpenAI.baseComposableProvider
