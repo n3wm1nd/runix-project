@@ -31,12 +31,14 @@ import Polysemy.Error
 
 import Runix.Runner (filesystemIO, httpIO, withRequestTimeout, loggingIO, failLog, Coding)
 import Runix.LLM.Effects
-import Runix.LLM.Interpreter 
+import Runix.LLM.Interpreter
+import Runix.LLM.ToolInstances ()  -- Import orphan instances
 import Runix.HTTP.Effects
 import Runix.FileSystem.Effects
 import Runix.Logging.Effects
 import Runix.Runners.CLI.Chat (chatLoop)
 
+import UniversalLLM.Core.Tools
 import UniversalLLM.Providers.XMLToolCalls (withXMLResponseParsing)
 
 import qualified Data.Text as T
@@ -91,23 +93,19 @@ instance HasCodec LoggingToolResult where
             <$> requiredField "success" "Whether the logging succeeded" .= success
             <*> requiredField "message" "Result message" .= message
 
--- Logging tool type - allows LLM to log messages
-data LoggingTool m = LoggingTool (LoggingToolParams -> m LoggingToolResult)
+-- Make LoggingToolResult a ToolParameter for use in multi-parameter functions
+instance ToolParameter LoggingToolResult where
+    paramName _ n = "logging_result_" <> T.pack (show n)
+    paramDescription _ = "logging operation result"
 
-instance Tool (LoggingTool m) m where
-    type ToolParams (LoggingTool m) = LoggingToolParams
-    type ToolOutput (LoggingTool m) = LoggingToolResult
+-- Make LoggingToolResult a ToolFunction so functions returning it become tools automatically
+instance ToolFunction LoggingToolResult where
+    toolFunctionName _ = "log_message"
+    toolFunctionDescription _ = "Log a message to the system with specified level (info, warning, or error)"
 
-    toolName _ = "log_message"
-    toolDescription _ = "Log a message to the system with specified level (info, warning, or error)"
-
-    call (LoggingTool impl) params = impl params
-
--- Create the logging tool with actual implementation that uses the Logging effect
-loggingTool :: forall r. Members '[Logging] r => LoggingTool (Sem r)
-loggingTool = LoggingTool $ \params -> do
-    let msg = logMessage params
-    let lvl = logLevel params
+-- Create the logging tool as a bare function
+loggingToolFunc :: Members '[Logging] r => T.Text -> T.Text -> Sem r LoggingToolResult
+loggingToolFunc msg lvl = do
     case lvl of
         "info" -> info msg
         "warning" -> warning msg
@@ -160,9 +158,9 @@ chatbotAgent :: forall provider model r.
 chatbotAgent userInput history = do
     info $ "User input: " <> userInput
 
-    -- Get tool list
+    -- Get tool list (using bare function since LoggingToolResult has ToolFunction instance)
     let tools :: [LLMTool (Sem r)]
-        tools = [LLMTool (loggingTool @r)]
+        tools = [LLMTool (loggingToolFunc @r)]
 
     -- Build config with tools
     let toolDefs = map llmToolToDefinition tools
@@ -203,7 +201,7 @@ handleResponse tools history responseMsgs = do
             info $ "Executing " <> T.pack (show (length calls)) <> " tool calls..."
 
             -- Execute all tool calls
-            toolResults <- mapM (executeToolCall tools) calls
+            toolResults <- mapM (executeToolCallFromList tools) calls
 
             -- Add tool results to history and query again
             let toolResultMsgs = map ToolResultMsg toolResults
