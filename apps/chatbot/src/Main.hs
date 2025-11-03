@@ -16,6 +16,7 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE DerivingVia #-}
 
 module Main where
 
@@ -68,18 +69,17 @@ instance ProviderImplementation LlamaCpp GLM45 where
 
 instance Coding GLM45
 
--- Logging tool parameters with automatic schema generation
-data LoggingToolParams = LoggingToolParams
-    { logMessage :: T.Text
-    , logLevel :: T.Text  -- "info", "warning", "error"
-    } deriving (Show, Eq, Generic)
+-- Newtype wrappers for tool parameters to give them proper names
+newtype LogMessage = LogMessage T.Text deriving (Show, Eq, HasCodec) via T.Text
+newtype LogLevel = LogLevel T.Text deriving (Show, Eq, HasCodec) via T.Text
 
--- AutoDoCodec instance for automatic schema generation
-instance HasCodec LoggingToolParams where
-    codec = object "LoggingToolParams" $
-        LoggingToolParams
-            <$> requiredField "message" "The message to log" .= logMessage
-            <*> requiredField "level" "Log level: info, warning, or error" .= logLevel
+instance ToolParameter LogMessage where
+    paramName _ _ = "message"
+    paramDescription _ = "The message to log"
+
+instance ToolParameter LogLevel where
+    paramName _ _ = "level"
+    paramDescription _ = "Log level: info, warning, or error"
 
 -- Logging tool result
 data LoggingToolResult = LoggingToolResult
@@ -104,8 +104,8 @@ instance ToolFunction LoggingToolResult where
     toolFunctionDescription _ = "Log a message to the system with specified level (info, warning, or error)"
 
 -- Create the logging tool as a bare function
-loggingToolFunc :: Members '[Logging] r => T.Text -> T.Text -> Sem r LoggingToolResult
-loggingToolFunc msg lvl = do
+loggingToolFunc :: Members '[Logging] r => LogMessage -> LogLevel -> Sem r LoggingToolResult
+loggingToolFunc (LogMessage msg) (LogLevel lvl) = do
     case lvl of
         "info" -> info msg
         "warning" -> warning msg
@@ -158,7 +158,7 @@ chatbotAgent :: forall provider model r.
 chatbotAgent userInput history = do
     info $ "User input: " <> userInput
 
-    -- Get tool list (using bare function since LoggingToolResult has ToolFunction instance)
+    -- Get tool list - using ToolFunction instance (cleanest approach)
     let tools :: [LLMTool (Sem r)]
         tools = [LLMTool (loggingToolFunc @r)]
 
