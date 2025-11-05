@@ -2,3 +2,4 @@ packages: runix
           libs/universal-llm
           tasks/dndwiki
           apps/chatbot
+          apps/runix-code
