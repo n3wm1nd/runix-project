@@ -63,6 +63,7 @@
             haskellPackages.autodocodec-schema
             haskellPackages.conduit-extra
             haskellPackages.exceptions
+            haskellPackages.pandoc
             cabal-install-3-14
             pkgs.cabal2nix
           ];
@@ -76,6 +77,7 @@
             http-conduit
             autodocodec
             autodocodec-schema
+            pandoc
             ];
         };
       };
