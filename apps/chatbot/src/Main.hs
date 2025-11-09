@@ -30,12 +30,12 @@ import Polysemy
 import Polysemy.Fail
 import Polysemy.Error
 
-import Runix.Runner (filesystemIO, httpIO, withRequestTimeout, loggingIO, failLog, Coding)
+import Runix.Runner (Coding)
 import Runix.LLM.Effects
 import Runix.LLM.Interpreter
 import Runix.LLM.ToolInstances ()  -- Import orphan instances
 import Runix.HTTP.Effects
-import Runix.FileSystem.Effects
+import Runix.FileSystem.Effects (FileSystemRead, FileSystemWrite, filesystemIO)
 import Runix.Logging.Effects
 import Runix.Runners.CLI.Chat (chatLoop)
 
@@ -125,7 +125,7 @@ llamaCppLLM action = do
 
 -- Our custom run stack (copying runUntrusted structure)
 runChatbot :: HasCallStack
-           => (forall r. Members '[FileSystem, HTTP, Logging, LLM LlamaCpp GLM45, Fail, Embed IO] r => Sem r a)
+           => (forall r. Members '[FileSystemRead, FileSystemWrite, HTTP, Logging, LLM LlamaCpp GLM45, Fail, Embed IO] r => Sem r a)
            -> IO (Either String a)
 runChatbot = runM . runError . loggingIO . failLog . httpIO (withRequestTimeout 300) . filesystemIO . llamaCppLLM
 

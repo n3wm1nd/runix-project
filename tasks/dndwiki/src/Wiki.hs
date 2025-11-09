@@ -4,7 +4,7 @@
 {-# LANGUAGE KindSignatures #-}
 module Wiki where
 
-import Runix.FileSystem.Effects (FileSystem, readFile, writeFile, listFiles, fileExists)
+import Runix.FileSystem.Effects (FileSystemRead, FileSystemWrite, readFile, writeFile, listFiles, fileExists)
 import Polysemy
 import Data.Text (Text)
 import qualified Data.Text as Text
@@ -32,7 +32,7 @@ makeSem ''Wiki
 newtype LogseqDirectory = LogseqDirectory FilePath deriving (Show)
 
 -- | Reinterpret Wiki effect for logseq graphs via filesystem
-runWikiLogseqFilesystem :: Member FileSystem r => LogseqDirectory -> Sem (Wiki ': r) a -> Sem r a
+runWikiLogseqFilesystem :: Members [FileSystemRead, FileSystemWrite] r => LogseqDirectory -> Sem (Wiki ': r) a -> Sem r a
 runWikiLogseqFilesystem (LogseqDirectory _baseDir) = 
   interpret $ \case
     ReadPage pageName -> do
