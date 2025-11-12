@@ -1,0 +1,6 @@
+[submodule "runix"]
+	path = runix
+	url = git@github.com:n3wm1nd/runix.git
+[submodule "libs/universal-llm"]
+	path = libs/universal-llm
+	url = git@github.com:n3wm1nd/universal-llm.git
