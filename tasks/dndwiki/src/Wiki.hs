@@ -9,7 +9,6 @@ import Polysemy
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as TE
-import qualified Data.ByteString.Lazy as BSL
 import Prelude hiding (writeFile, readFile)
 import Data.Kind
 
@@ -37,8 +36,8 @@ runWikiLogseqFilesystem (LogseqDirectory _baseDir) =
   interpret $ \case
     ReadPage pageName -> do
       content <- readFile (pageFilePath pageName)
-      return $ TE.decodeUtf8 $ BSL.toStrict content
-    WritePage pageName content -> writeFile (pageFilePath pageName) (BSL.fromStrict $ TE.encodeUtf8 content)
+      return $ TE.decodeUtf8 content
+    WritePage pageName content -> writeFile (pageFilePath pageName) (TE.encodeUtf8 content)
     ListPages -> do
       files <- listFiles "pages/"
       return $ map (PageName . unsanitizePageName) $ filter (Text.isSuffixOf ".md") $ map Text.pack files
