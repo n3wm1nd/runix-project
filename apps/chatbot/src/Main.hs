@@ -37,6 +37,7 @@ import Runix.LLM.ToolInstances ()  -- Import orphan instances
 import Runix.HTTP.Effects
 import Runix.FileSystem.Effects (FileSystemRead, FileSystemWrite, filesystemIO)
 import Runix.Logging.Effects
+import Runix.Cancellation.Effects (Cancellation, cancelNoop)
 import Runix.Runners.CLI.Chat (chatLoop)
 
 import UniversalLLM.Core.Tools
@@ -114,7 +115,7 @@ loggingToolFunc (LogMessage msg) (LogLevel lvl) = do
     return $ LoggingToolResult True ("Logged message at level: " <> lvl)
 
 -- Setup LlamaCpp LLM with environment endpoint (only place we specify concrete types)
-llamaCppLLM :: forall r a. Members '[Embed IO, Fail, HTTP, Logging] r
+llamaCppLLM :: forall r a. Members '[Embed IO, Fail, HTTP, Logging, Cancellation] r
             => Sem (LLM LlamaCpp GLM45 : r) a
             -> Sem r a
 llamaCppLLM action = do
@@ -125,9 +126,9 @@ llamaCppLLM action = do
 
 -- Our custom run stack (copying runUntrusted structure)
 runChatbot :: HasCallStack
-           => (forall r. Members '[FileSystemRead, FileSystemWrite, HTTP, Logging, LLM LlamaCpp GLM45, Fail, Embed IO] r => Sem r a)
+           => (forall r. Members '[FileSystemRead, FileSystemWrite, HTTP, Logging, LLM LlamaCpp GLM45, Fail, Embed IO, Cancellation] r => Sem r a)
            -> IO (Either String a)
-runChatbot = runM . runError . loggingIO . failLog . httpIO (withRequestTimeout 300) . filesystemIO . llamaCppLLM
+runChatbot = runM . runError . loggingIO . failLog . cancelNoop . httpIO (withRequestTimeout 300) . filesystemIO . llamaCppLLM
 
 -- Extract text and tool calls from assistant messages - pure function
 extractFromMessages :: [Message model provider] -> ([T.Text], [ToolCall])
