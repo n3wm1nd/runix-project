@@ -6,6 +6,7 @@ module Wiki where
 
 import Runix.FileSystem.Effects (FileSystemRead, FileSystemWrite, readFile, writeFile, listFiles, fileExists)
 import Polysemy
+import Polysemy.Fail (Fail)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as TE
@@ -31,7 +32,7 @@ makeSem ''Wiki
 newtype LogseqDirectory = LogseqDirectory FilePath deriving (Show)
 
 -- | Reinterpret Wiki effect for logseq graphs via filesystem
-runWikiLogseqFilesystem :: Members [FileSystemRead, FileSystemWrite] r => LogseqDirectory -> Sem (Wiki ': r) a -> Sem r a
+runWikiLogseqFilesystem :: Members [FileSystemRead, FileSystemWrite, Fail] r => LogseqDirectory -> Sem (Wiki ': r) a -> Sem r a
 runWikiLogseqFilesystem (LogseqDirectory _baseDir) = 
   interpret $ \case
     ReadPage pageName -> do
