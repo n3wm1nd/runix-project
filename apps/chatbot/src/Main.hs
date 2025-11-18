@@ -50,23 +50,30 @@ import GHC.Generics (Generic)
 import Data.Aeson ()  -- Import instances only
 import Autodocodec
 import qualified UniversalLLM.Providers.OpenAI
+import UniversalLLM.Protocols.OpenAI (OpenAIRequest, OpenAIResponse)
 
 -- No ChatProvider/ChatModel wrappers - business logic is fully polymorphic
     
 
 -- GLM4.5 model with XML-style tool calls (running on local llama.cpp server)
 data GLM45 = GLM45 deriving (Show, Eq)
+instance Provider GLM45 LlamaCpp where 
+    type ProviderRequest GLM45 = OpenAIRequest
+    type ProviderResponse GLM45 = OpenAIResponse
 
 instance ModelName LlamaCpp GLM45 where
     modelName _ = "glm-4-9b-chat"
 
 instance HasTools GLM45 LlamaCpp where
     -- llama-cpp handles tool definitions in system prompt, but returns XML
-    -- So we use withXMLResponseParsing to parse XML responses into proper tool calls
-    withTools = withXMLResponseParsing . UniversalLLM.Providers.OpenAI.openAIWithTools
+    -- We use openAI tools for request building, and XML parsing for responses
+    withTools = withXMLResponseParsing
 
-instance ProviderImplementation LlamaCpp GLM45 where
-    getComposableProvider = withTools $ UniversalLLM.Providers.OpenAI.baseComposableProvider
+-- Composable provider for GLM45
+-- Note: withXMLResponseParsing handles XML parsing, but we still need openAI tool definitions
+-- Those come from the system prompt configuration in chatbotAgent
+glm45ComposableProvider :: ComposableProvider LlamaCpp GLM45 (ToolState GLM45 LlamaCpp, ())
+glm45ComposableProvider = withTools UniversalLLM.Providers.OpenAI.baseComposableProvider
 
 instance Coding GLM45
 
@@ -122,7 +129,7 @@ llamaCppLLM action = do
     endpoint <- embed $ lookupEnv "OPENAI_ENDPOINT"
     case endpoint of
         Nothing -> fail "OPENAI_ENDPOINT environment variable is not set"
-        Just ep -> interpretLlamaCpp ep LlamaCpp GLM45 action
+        Just ep -> interpretLlamaCpp glm45ComposableProvider ep LlamaCpp GLM45 action
 
 -- Our custom run stack (copying runUntrusted structure)
 runChatbot :: HasCallStack
