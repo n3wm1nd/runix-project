@@ -41,7 +41,7 @@ import Runix.Cancellation.Effects (Cancellation, cancelNoop)
 import Runix.Runners.CLI.Chat (chatLoop)
 
 import UniversalLLM.Core.Tools
-import UniversalLLM.Providers.XMLToolCalls (withXMLResponseParsing)
+import UniversalLLM.Providers.XMLToolCalls (xmlResponseParser)
 
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
@@ -67,13 +67,13 @@ instance ModelName LlamaCpp GLM45 where
 instance HasTools GLM45 LlamaCpp where
     -- llama-cpp handles tool definitions in system prompt, but returns XML
     -- We use openAI tools for request building, and XML parsing for responses
-    withTools = withXMLResponseParsing
+    withTools = xmlResponseParser
 
 -- Composable provider for GLM45
 -- Note: withXMLResponseParsing handles XML parsing, but we still need openAI tool definitions
 -- Those come from the system prompt configuration in chatbotAgent
 glm45ComposableProvider :: ComposableProvider LlamaCpp GLM45 (ToolState GLM45 LlamaCpp, ())
-glm45ComposableProvider = withTools UniversalLLM.Providers.OpenAI.baseComposableProvider
+glm45ComposableProvider = withTools `chainProviders` UniversalLLM.Providers.OpenAI.baseComposableProvider
 
 instance Coding GLM45
 
