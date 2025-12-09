@@ -51,6 +51,8 @@ import Data.Aeson ()  -- Import instances only
 import Autodocodec
 import qualified UniversalLLM.Providers.OpenAI
 import UniversalLLM.Protocols.OpenAI (OpenAIRequest, OpenAIResponse)
+import qualified Data.ByteString as BS
+import Runix.Streaming.Effects (StreamChunk, ignoreChunks)
 
 -- No ChatProvider/ChatModel wrappers - business logic is fully polymorphic
     
@@ -122,7 +124,7 @@ loggingToolFunc (LogMessage msg) (LogLevel lvl) = do
     return $ LoggingToolResult True ("Logged message at level: " <> lvl)
 
 -- Setup LlamaCpp LLM with environment endpoint (only place we specify concrete types)
-llamaCppLLM :: forall r a. Members '[Embed IO, Fail, HTTP, Logging, Cancellation] r
+llamaCppLLM :: forall r a. Members '[Embed IO, Fail, HTTP, HTTPStreaming, Logging, Cancellation] r
             => Sem (LLM (Model GLM45 LlamaCpp) : r) a
             -> Sem r a
 llamaCppLLM action = do
@@ -133,9 +135,9 @@ llamaCppLLM action = do
 
 -- Our custom run stack (copying runUntrusted structure)
 runChatbot :: HasCallStack
-           => (forall r. Members '[FileSystemRead, FileSystemWrite, HTTP, Logging, LLM (Model GLM45 LlamaCpp), Fail, Embed IO, Cancellation] r => Sem r a)
+           => (forall r. Members '[FileSystemRead, FileSystemWrite, HTTP, HTTPStreaming, StreamChunk BS.ByteString, Logging, LLM (Model GLM45 LlamaCpp), Fail, Embed IO, Cancellation] r => Sem r a)
            -> IO (Either String a)
-runChatbot = runM . runError . loggingIO . failLog . cancelNoop . httpIO (withRequestTimeout 300) . filesystemIO . llamaCppLLM
+runChatbot = runM . runError . loggingIO . failLog . cancelNoop . ignoreChunks @BS.ByteString . httpIOStreaming (withRequestTimeout 300) . httpIO (withRequestTimeout 300) . filesystemIO . llamaCppLLM
 
 -- Extract text and tool calls from assistant messages - pure function
 extractFromMessages :: [Message model] -> ([T.Text], [ToolCall])
