@@ -57,14 +57,14 @@ import UniversalLLM.Protocols.OpenAI (OpenAIRequest, OpenAIResponse)
 
 -- GLM4.5 model with XML-style tool calls (running on local llama.cpp server)
 data GLM45 = GLM45 deriving (Show, Eq)
-instance Provider GLM45 LlamaCpp where 
-    type ProviderRequest GLM45 = OpenAIRequest
-    type ProviderResponse GLM45 = OpenAIResponse
+instance Provider (Model GLM45 LlamaCpp) where
+    type ProviderRequest (Model GLM45 LlamaCpp) = OpenAIRequest
+    type ProviderResponse (Model GLM45 LlamaCpp) = OpenAIResponse
 
-instance ModelName LlamaCpp GLM45 where
-    modelName _ = "glm-4-9b-chat"
+instance ModelName (Model GLM45 LlamaCpp) where
+    modelName (Model _ _) = "glm-4-9b-chat"
 
-instance HasTools GLM45 LlamaCpp where
+instance HasTools (Model GLM45 LlamaCpp) where
     -- llama-cpp handles tool definitions in system prompt, but returns XML
     -- We use openAI tools for request building, and XML parsing for responses
     withTools = xmlResponseParser
@@ -72,7 +72,7 @@ instance HasTools GLM45 LlamaCpp where
 -- Composable provider for GLM45
 -- Note: withXMLResponseParsing handles XML parsing, but we still need openAI tool definitions
 -- Those come from the system prompt configuration in chatbotAgent
-glm45ComposableProvider :: ComposableProvider LlamaCpp GLM45 (ToolState GLM45 LlamaCpp, ())
+glm45ComposableProvider :: ComposableProvider (Model GLM45 LlamaCpp) (ToolState (Model GLM45 LlamaCpp), ())
 glm45ComposableProvider = withTools `chainProviders` UniversalLLM.Providers.OpenAI.baseComposableProvider
 
 instance Coding GLM45
@@ -123,22 +123,22 @@ loggingToolFunc (LogMessage msg) (LogLevel lvl) = do
 
 -- Setup LlamaCpp LLM with environment endpoint (only place we specify concrete types)
 llamaCppLLM :: forall r a. Members '[Embed IO, Fail, HTTP, Logging, Cancellation] r
-            => Sem (LLM LlamaCpp GLM45 : r) a
+            => Sem (LLM (Model GLM45 LlamaCpp) : r) a
             -> Sem r a
 llamaCppLLM action = do
     endpoint <- embed $ lookupEnv "OPENAI_ENDPOINT"
     case endpoint of
         Nothing -> fail "OPENAI_ENDPOINT environment variable is not set"
-        Just ep -> interpretLlamaCpp glm45ComposableProvider ep LlamaCpp GLM45 action
+        Just ep -> interpretLlamaCpp glm45ComposableProvider ep (Model GLM45 LlamaCpp) action
 
 -- Our custom run stack (copying runUntrusted structure)
 runChatbot :: HasCallStack
-           => (forall r. Members '[FileSystemRead, FileSystemWrite, HTTP, Logging, LLM LlamaCpp GLM45, Fail, Embed IO, Cancellation] r => Sem r a)
+           => (forall r. Members '[FileSystemRead, FileSystemWrite, HTTP, Logging, LLM (Model GLM45 LlamaCpp), Fail, Embed IO, Cancellation] r => Sem r a)
            -> IO (Either String a)
 runChatbot = runM . runError . loggingIO . failLog . cancelNoop . httpIO (withRequestTimeout 300) . filesystemIO . llamaCppLLM
 
 -- Extract text and tool calls from assistant messages - pure function
-extractFromMessages :: [Message model provider] -> ([T.Text], [ToolCall])
+extractFromMessages :: [Message model] -> ([T.Text], [ToolCall])
 extractFromMessages msgs = foldr processMessage ([], []) msgs
   where
     processMessage (AssistantText txt) (texts, calls) = (txt:texts, calls)
@@ -150,19 +150,19 @@ extractFromMessages msgs = foldr processMessage ([], []) msgs
 displayTexts :: Member (Embed IO) r => [T.Text] -> Sem r ()
 displayTexts texts = mapM_ (embed . T.putStrLn) texts
 
--- Chatbot agent - polymorphic over provider and model
-chatbotAgent :: forall provider model r.
-                ( Member (LLM provider model) r
+-- Chatbot agent - polymorphic over model
+chatbotAgent :: forall model r.
+                ( Member (LLM model) r
                 , Member Logging r
                 , Member (Embed IO) r
-                , HasTools model provider
-                , SupportsTemperature provider
-                , SupportsMaxTokens provider
-                , SupportsSystemPrompt provider
+                , HasTools model
+                , SupportsTemperature (ProviderOf model)
+                , SupportsMaxTokens (ProviderOf model)
+                , SupportsSystemPrompt (ProviderOf model)
                 )
              => T.Text
-             -> [Message model provider]
-             -> Sem r [Message model provider]
+             -> [Message model]
+             -> Sem r [Message model]
 chatbotAgent userInput history = do
     info $ "User input: " <> userInput
 
@@ -180,25 +180,25 @@ chatbotAgent userInput history = do
 
     -- Add user message and query
     let newHistory = history ++ [UserText userInput]
-    responseMsgs <- queryLLM @provider @model configs newHistory
+    responseMsgs <- queryLLM @model configs newHistory
 
     -- Process response
     handleResponse tools (newHistory ++ responseMsgs) responseMsgs
 
 -- Handle responses recursively - execute tools if needed - polymorphic
-handleResponse :: forall provider model r.
-                  ( Member (LLM provider model) r
+handleResponse :: forall model r.
+                  ( Member (LLM model) r
                   , Member Logging r
                   , Member (Embed IO) r
-                  , HasTools model provider
-                  , SupportsTemperature provider
-                  , SupportsMaxTokens provider
-                  , SupportsSystemPrompt provider
+                  , HasTools model
+                  , SupportsTemperature (ProviderOf model)
+                  , SupportsMaxTokens (ProviderOf model)
+                  , SupportsSystemPrompt (ProviderOf model)
                   )
                => [LLMTool (Sem r)]
-               -> [Message model provider]
-               -> [Message model provider]
-               -> Sem r [Message model provider]
+               -> [Message model]
+               -> [Message model]
+               -> Sem r [Message model]
 handleResponse tools history responseMsgs = do
     let (texts, toolCalls) = extractFromMessages responseMsgs
     displayTexts texts
@@ -223,13 +223,13 @@ handleResponse tools history responseMsgs = do
                           , SystemPrompt "You are a helpful assistant. Be friendly and concise."
                           ]
 
-            responseMsgs' <- queryLLM @provider @model configs newHistory
+            responseMsgs' <- queryLLM @model configs newHistory
             handleResponse tools (newHistory ++ responseMsgs') responseMsgs'
 
 main :: IO ()
 main = do
     putStrLn "Starting Runix chatbot with GLM-4.5 (XML tool calls). Type your messages (Ctrl+D to exit):"
-    result <- runChatbot (chatLoop chatbotAgent ([] :: [Message GLM45 LlamaCpp]))
+    result <- runChatbot (chatLoop chatbotAgent ([] :: [Message (Model GLM45 LlamaCpp)]))
     case result of
         Right () -> return ()
         Left errMsg -> hPutStr stderr errMsg >> exitFailure
