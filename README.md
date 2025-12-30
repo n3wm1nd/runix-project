@@ -191,20 +191,28 @@ The project emphasizes:
 
 ## Contributing
 
-As this project is in early development, contribution guidelines are still being formalized. The codebase prioritizes:
+Contributions are welcome, including major refactors that improve the architecture. The codebase prioritizes:
 - Clear, elegant solutions over quick workarounds
 - Well-understood tradeoffs when compromises are necessary
 - Type-safe, composable designs
 
+**Note on contribution scope**: If your contribution primarily adds models or handles special cases, consider packaging it as a separate library. We're keeping the core minimal to facilitate architectural evolution.
+
+**Contributor License Agreement**: By contributing, you agree that your code may be relicensed to a different OSI-approved open source license in the future.
+
 ## License
 
-See individual submodules for their respective licenses.
+- **Libraries** (`runix/`, `libs/universal-llm/`): Apache License 2.0
+- **Applications** (`apps/runix-code/`): GNU General Public License
 
-## Links
+See individual LICENSE files in each directory for full license text.
 
-- Issues and discussions: (To be added when repository is published)
-- Documentation: (To be added)
+## Issues and Feedback
 
----
+This project is in early development, and we're focused on core architecture rather than small details. That said:
 
-For questions or issues during this early development phase, please refer to the documentation in the respective submodule directories.
+- **Feedback is welcome** - Let us know what works and what doesn't
+- **Bug fix PRs are welcome** - Straightforward fixes without intrusive changes are appreciated
+- **Architectural improvements are welcome** - Well-designed refactors that solve architectural issues are encouraged, but they should address fundamental problems, not just fix single small issues
+
+Please understand that during this phase, minor issues may not be prioritized as we focus on getting the architecture right.
