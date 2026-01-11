@@ -35,7 +35,7 @@ import Runix.LLM.Effects
 import Runix.LLM.Interpreter
 import Runix.LLM.ToolInstances ()  -- Import orphan instances
 import Runix.HTTP.Effects
-import Runix.FileSystem.Effects (FileSystemRead, FileSystemWrite, filesystemIO)
+import Runix.FileSystem.Simple.Effects (FileSystemRead, FileSystemWrite, filesystemIO)
 import Runix.Logging.Effects
 import Runix.Cancellation.Effects (Cancellation, cancelNoop)
 import Runix.Runners.CLI.Chat (chatLoop)
