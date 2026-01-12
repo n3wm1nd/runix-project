@@ -31,13 +31,13 @@ import Polysemy.Fail
 import Polysemy.Error
 
 import Runix.Runner (Coding)
-import Runix.LLM.Effects
+import Runix.LLM
 import Runix.LLM.Interpreter
 import Runix.LLM.ToolInstances ()  -- Import orphan instances
-import Runix.HTTP.Effects
-import Runix.FileSystem.Simple.Effects (FileSystemRead, FileSystemWrite, filesystemIO)
-import Runix.Logging.Effects
-import Runix.Cancellation.Effects (Cancellation, cancelNoop)
+import Runix.HTTP
+import Runix.FileSystem.Simple (FileSystemRead, FileSystemWrite, filesystemIO)
+import Runix.Logging
+import Runix.Cancellation (Cancellation, cancelNoop)
 import Runix.Runners.CLI.Chat (chatLoop)
 
 import UniversalLLM.Core.Tools
@@ -52,7 +52,7 @@ import Autodocodec
 import qualified UniversalLLM.Providers.OpenAI
 import UniversalLLM.Protocols.OpenAI (OpenAIRequest, OpenAIResponse)
 import qualified Data.ByteString as BS
-import Runix.Streaming.Effects (StreamChunk, ignoreChunks)
+import Runix.Streaming (StreamChunk, ignoreChunks)
 
 -- No ChatProvider/ChatModel wrappers - business logic is fully polymorphic
     

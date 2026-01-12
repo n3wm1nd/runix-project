@@ -5,7 +5,7 @@
 
 module Dndwiki where
 
-import Runix.LLM.Effects (LLM, askLLM)
+import Runix.LLM (LLM, askLLM)
 import Runix.LLMTypes
 import Polysemy
 import Polysemy.Fail

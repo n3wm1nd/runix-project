@@ -21,13 +21,13 @@ import Polysemy.Fail
 import Polysemy.Error
 
 import Runix.Runner (filesystemIO, httpIO, withRequestTimeout, secretEnv, loggingIO, failLog, Coding)
-import Runix.LLM.Effects
+import Runix.LLM
 import Runix.LLM.OpenAICompatible
 import Runix.LLM.Protocol.OpenAICompatible
-import Runix.RestAPI.Effects
-import Runix.HTTP.Effects
-import Runix.FileSystem.Effects
-import Runix.Logging.Effects
+import Runix.RestAPI
+import Runix.HTTP
+import Runix.FileSystem
+import Runix.Logging
 
 import qualified Data.Text as T
 import GHC.Stack

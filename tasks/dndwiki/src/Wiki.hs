@@ -4,7 +4,7 @@
 {-# LANGUAGE KindSignatures #-}
 module Wiki where
 
-import Runix.FileSystem.Simple.Effects (FileSystemRead, FileSystemWrite, FileSystem, readFile, writeFile, listFiles, fileExists)
+import Runix.FileSystem.Simple (FileSystemRead, FileSystemWrite, FileSystem, readFile, writeFile, listFiles, fileExists)
 import Polysemy
 import Polysemy.Fail (Fail)
 import Data.Text (Text)
