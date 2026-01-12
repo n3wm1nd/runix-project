@@ -40,7 +40,7 @@ import Runix.Logging
 import Runix.Cancellation (Cancellation, cancelNoop)
 import Runix.Runners.CLI.Chat (chatLoop)
 
-import UniversalLLM.Core.Tools
+import UniversalLLM.Tools
 import UniversalLLM.Providers.XMLToolCalls (xmlResponseParser)
 
 import qualified Data.Text as T
