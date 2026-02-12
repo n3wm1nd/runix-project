@@ -32,7 +32,8 @@ import Polysemy.Error
 
 import Runix.Runner (Coding)
 import Runix.LLM
-import Runix.LLM.Interpreter
+import Runix.LLM.Interpreter (LlamaCppAuth(..), interpretLLM)
+import Runix.RestAPI (restapiHTTP)
 import Runix.LLM.ToolInstances ()  -- Import orphan instances
 import Runix.HTTP
 import Runix.FileSystem.Simple (FileSystemRead, FileSystemWrite, filesystemIO)
@@ -40,7 +41,9 @@ import Runix.Logging
 import Runix.Cancellation (Cancellation, cancelNoop)
 import Runix.Runners.CLI.Chat (chatLoop)
 
+import UniversalLLM (Provider(..), ModelName(..), Model(..), HasTools(..), SupportsTemperature, SupportsMaxTokens, SupportsSystemPrompt, ProviderOf, ComposableProvider, ToolState, chainProviders, BaseComposableProvider(..))
 import UniversalLLM.Tools
+import UniversalLLM.Providers.OpenAI (LlamaCpp(..))
 import UniversalLLM.Providers.XMLToolCalls (xmlResponseParser)
 
 import qualified Data.Text as T
@@ -124,20 +127,23 @@ loggingToolFunc (LogMessage msg) (LogLevel lvl) = do
     return $ LoggingToolResult True ("Logged message at level: " <> lvl)
 
 -- Setup LlamaCpp LLM with environment endpoint (only place we specify concrete types)
-llamaCppLLM :: forall r a. Members '[Embed IO, Fail, HTTP, HTTPStreaming, Logging, Cancellation] r
+llamaCppLLM :: forall r a. Members '[Embed IO, Fail, HTTP, HTTPStreaming, StreamChunk BS.ByteString, Logging, Cancellation] r
             => Sem (LLM (Model GLM45 LlamaCpp) : r) a
             -> Sem r a
 llamaCppLLM action = do
     endpoint <- embed $ lookupEnv "OPENAI_ENDPOINT"
     case endpoint of
         Nothing -> fail "OPENAI_ENDPOINT environment variable is not set"
-        Just ep -> interpretLlamaCpp glm45ComposableProvider ep (Model GLM45 LlamaCpp) action
+        Just ep -> restapiHTTP (LlamaCppAuth ep)
+                   . interpretLLM @LlamaCppAuth glm45ComposableProvider (Model GLM45 LlamaCpp)
+                   . raiseUnder
+                   $ action
 
 -- Our custom run stack (copying runUntrusted structure)
 runChatbot :: HasCallStack
            => (forall r. Members '[FileSystemRead, FileSystemWrite, HTTP, HTTPStreaming, StreamChunk BS.ByteString, Logging, LLM (Model GLM45 LlamaCpp), Fail, Embed IO, Cancellation] r => Sem r a)
            -> IO (Either String a)
-runChatbot = runM . runError . loggingIO . failLog . cancelNoop . ignoreChunks @BS.ByteString . httpIOStreaming (withRequestTimeout 300) . httpIO (withRequestTimeout 300) . filesystemIO . llamaCppLLM
+runChatbot = runM . runError . loggingIO . failLog . cancelNoop . httpIO (withRequestTimeout 300) . httpIOStreaming (withRequestTimeout 300) . ignoreChunks @BS.ByteString . filesystemIO . llamaCppLLM
 
 -- Extract text and tool calls from assistant messages - pure function
 extractFromMessages :: [Message model] -> ([T.Text], [ToolCall])
