@@ -1,5 +1,6 @@
 packages: runix
           libs/universal-llm
+          libs/runix-tools
           tasks/dndwiki
           apps/chatbot
           apps/runix-code

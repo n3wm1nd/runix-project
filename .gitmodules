@@ -7,3 +7,7 @@
 [submodule "apps/runix-code"]
 	path = apps/runix-code
 	url = git@github.com:n3wm1nd/runix-code.git
+[submodule "libs/runix-tools"]
+	path = libs/runix-tools
+	url = git@github.com:n3wm1nd/runix-tools.git
+	branch = master
