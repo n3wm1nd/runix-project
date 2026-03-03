@@ -133,7 +133,7 @@ llamaCppLLM action = do
     case endpoint of
         Nothing -> fail "OPENAI_ENDPOINT environment variable is not set"
         Just ep -> restapiHTTP (LlamaCppAuth ep)
-                   . interpretLLM @LlamaCppAuth glm45ComposableProvider (Model GLM45 LlamaCpp)
+                   . interpretLLM @LlamaCppAuth glm45ComposableProvider (Model GLM45 LlamaCpp) []
                    . raiseUnder
                    $ action
 
