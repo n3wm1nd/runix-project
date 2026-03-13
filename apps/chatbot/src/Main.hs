@@ -85,12 +85,12 @@ newtype LogMessage = LogMessage T.Text deriving (Show, Eq, HasCodec) via T.Text
 newtype LogLevel = LogLevel T.Text deriving (Show, Eq, HasCodec) via T.Text
 
 instance ToolParameter LogMessage where
-    paramName _ _ = "message"
-    paramDescription _ = "The message to log"
+    paramName = "message"
+    paramDescription = "The message to log"
 
 instance ToolParameter LogLevel where
-    paramName _ _ = "level"
-    paramDescription _ = "Log level: info, warning, or error"
+    paramName = "level"
+    paramDescription = "Log level: info, warning, or error"
 
 -- Logging tool result
 data LoggingToolResult = LoggingToolResult
@@ -106,13 +106,13 @@ instance HasCodec LoggingToolResult where
 
 -- Make LoggingToolResult a ToolParameter for use in multi-parameter functions
 instance ToolParameter LoggingToolResult where
-    paramName _ n = "logging_result_" <> T.pack (show n)
-    paramDescription _ = "logging operation result"
+    paramName = "logging_result"
+    paramDescription = "logging operation result"
 
 -- Make LoggingToolResult a ToolFunction so functions returning it become tools automatically
 instance ToolFunction LoggingToolResult where
-    toolFunctionName _ = "log_message"
-    toolFunctionDescription _ = "Log a message to the system with specified level (info, warning, or error)"
+    toolFunctionName = "log_message"
+    toolFunctionDescription = "Log a message to the system with specified level (info, warning, or error)"
 
 -- Create the logging tool as a bare function
 loggingToolFunc :: Members '[Logging] r => LogMessage -> LogLevel -> Sem r LoggingToolResult
