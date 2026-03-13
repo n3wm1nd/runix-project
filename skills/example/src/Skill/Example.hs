@@ -96,16 +96,16 @@ echo :: EchoInput -> Sem r EchoResult
 echo (EchoInput t) = return (EchoResult t)
 
 instance ToolParameter EchoInput where
-  paramName        _ _ = "input"
-  paramDescription _   = "the text to echo back"
+  paramName         = "input"
+  paramDescription  = "the text to echo back"
 
 instance ToolParameter EchoResult where
-  paramName        _ _ = "result"
-  paramDescription _   = "the echoed text, unchanged"
+  paramName         = "result"
+  paramDescription  = "the echoed text, unchanged"
 
 instance ToolFunction EchoResult where
-  toolFunctionName        _ = "echo"
-  toolFunctionDescription _ = "Echo the input text back unchanged"
+  toolFunctionName        = "echo"
+  toolFunctionDescription = "Echo the input text back unchanged"
 
 --------------------------------------------------------------------------------
 -- echoLoud
@@ -130,12 +130,12 @@ echoLoud (EchoInput t)
   | otherwise          = return (EchoLoudResult (T.toUpper t))
 
 instance ToolParameter EchoLoudResult where
-  paramName        _ _ = "result"
-  paramDescription _   = "the echoed text in uppercase"
+  paramName        = "result"
+  paramDescription = "the echoed text in uppercase"
 
 instance ToolFunction EchoLoudResult where
-  toolFunctionName        _ = "echo_loud"
-  toolFunctionDescription _ = "Echo the input text back in uppercase. Fails if the input is empty."
+  toolFunctionName        = "echo_loud"
+  toolFunctionDescription = "Echo the input text back in uppercase. Fails if the input is empty."
 
 --------------------------------------------------------------------------------
 -- echoSimple
