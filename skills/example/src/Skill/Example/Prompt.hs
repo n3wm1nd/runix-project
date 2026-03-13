@@ -12,9 +12,8 @@
 -- Good for longer prompts you want to distribute and edit as standalone
 -- @.md@ documents.
 --
--- Both are shown in 'Skill.Example': 'exampleSkill' uses 'defaultAgent'
--- (pure), 'exampleSkillFromPrompts' takes a 'Prompts' record loaded via
--- 'loadPrompts'.
+-- The caller decides which to use: pass 'defaultAgent' directly as a system
+-- prompt, or load 'Prompts' via 'loadPrompts' and use 'Prompts.agent'.
 module Skill.Example.Prompt
   ( -- * File-based prompts
     Prompts (..)
@@ -36,16 +35,13 @@ data Prompts = Prompts
 -- | Load all prompts via the 'PromptLoader' effect.
 --
 -- The interpreter resolves the actual source; skill code only names the file.
--- Call this during skill initialisation and pass the result to
--- 'Skill.Example.exampleSkillFromPrompts'.
 loadPrompts :: Member PromptLoader r => Sem r Prompts
 loadPrompts = Prompts <$> loadPrompt "agent.md"
 
 -- | Inline fallback for the agent system prompt.
 --
--- Use this when you want 'Skill.Example.exampleSkill' to be a pure value
--- with no effects.  Prefer 'loadPrompts' for prompts that deserve to live
--- as standalone documents.
+-- Use this when a pure prompt constant is sufficient.  Prefer 'loadPrompts'
+-- for prompts that deserve to live as standalone documents.
 defaultAgent :: Text
 defaultAgent =
   "You are a helpful assistant with a single tool: echo. \

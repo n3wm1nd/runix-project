@@ -30,6 +30,7 @@ import Polysemy.State (State)
 import UniversalLLM (Message (..), HasTools)
 import UniversalLLM.Tools (LLMTool (..))
 import Runix.LLM (LLM)
+import Runix.LLM.ToolInstances ()  -- orphan instances: Callable/Tool for Sem
 import Runix.Logging (Logging)
 
 -- | Run an agentic loop with a given system prompt, tools, and user prompt.

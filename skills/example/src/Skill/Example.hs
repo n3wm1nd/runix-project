@@ -2,42 +2,42 @@
 --
 -- = What is a skill?
 --
--- A skill is a named bundle of LLM tools.  It consists of:
+-- A skill is a collection of LLM-callable tools, packaged as a Haskell
+-- library.  It consists of:
 --
---   * An __effect__ (@Skill.Example.Effect@) declaring what the skill can do
---     as an algebraic effect, so callers can provide different interpreters
---     (real, in-memory, mocked).
+--   * An optional __effect__ declaring what the skill needs from its
+--     environment (e.g. reading a crontab, calling an API).  Effects are not
+--     required — a skill with purely computational tools needs none — but they
+--     are the right abstraction when you want to separate /what/ should happen
+--     from /how/ it is done.  An effect lets callers swap in different
+--     interpreters: a real one, an in-memory one for tests, a mock.
 --
 --   * A set of __tools__ — plain Haskell functions that implement the skill's
---     capabilities and carry enough metadata (name, description, parameter
---     names) for an LLM to call them.
+--     capabilities.  Each function carries enough metadata (name, description,
+--     parameter names) for an LLM to call it correctly.
 --
---   * A __'Skill' value__ that bundles the tools with a system prompt and an
---     identifier.  This is what you pass to 'runSkill' or to an orchestrator.
+--   * __Prompts__ in @prompts\/*.md@, loaded via the 'PromptLoader' effect so
+--     the skill source stays pure.  Short prompts can also be inlined as
+--     'Text' constants — see 'Skill.Example.Prompt.defaultAgent'.
 --
 -- = How to write a new skill
 --
 -- 1. Create @skills\/your-skill\/@, copy the cabal structure from here.
 --
--- 2. Define your effect in @YourSkill.Effect@.  The effect describes what
---    the skill /needs from its environment/ — e.g. reading\/writing files,
---    calling an API.  Keep it minimal and pure in shape.
+-- 2. If your tools need to interact with the environment, define an effect in
+--    @YourSkill.Effect@.  Keep it minimal — one constructor per distinct
+--    operation.  If your tools are purely computational, skip this step.
 --
--- 3. Write an in-memory interpreter in @YourSkill.InMemory@ for tests.
---    Optionally write a real interpreter in @YourSkill.Interpreter@.
+-- 3. Write an in-memory interpreter in @YourSkill.InMemory@ for tests, and
+--    a real interpreter in @YourSkill.Interpreter@ for production use.
 --
--- 4. Write your tools in @YourSkill.Skill@.  Each tool is a function:
+-- 4. Write your tools in @YourSkill.Skill@ (this file).  Each tool is a
+--    self-contained block: data types, then the function, then LLM metadata
+--    instances.  Skip instances that are already covered by a previous tool.
 --
---    @
---    myTool :: forall r. Member YourEffect r => Arg -> Sem (Fail ':  r) Result
---    @
---
---    The @Fail ':  r@ means the tool runs in a stack that has @Fail@ at the
---    top (for user-visible error messages) plus whatever effects @r@ contains.
---    @forall r@ is essential: tools are polymorphic in the caller's effect row.
---
--- 5. Assemble the 'Skill' value.  Each tool is wrapped in 'LLMTool' so the
---    framework can extract its description for the LLM.
+-- 5. Write prompts in @prompts\/*.md@ and load them via 'PromptLoader' in
+--    @YourSkill.Prompt@.  See 'Skill.Example.Prompt' for both the inline and
+--    file-based patterns.
 --
 -- 6. Write tests in @test\/YourSkill\/@.  Use 'Testing.run',
 --    'Testing.interpretLLM' (integration) or 'Testing.interpretLLMMocked'
@@ -46,70 +46,59 @@
 --
 -- = Using skills outside agents
 --
--- Tools are plain functions — you can call them from any Runix program:
+-- Tools are plain functions — you can call them from any Runix program
+-- without involving an agent or an LLM at all:
 --
 -- @
--- result <- echo (EchoInput "hello")
+-- result <- echo (EchoInput \"hello\")
 -- @
 --
--- The 'Skill' record and system prompt only matter when you are running an
--- agent loop via 'runSkill' or 'subagent'.  Ignore them otherwise.
+-- The LLM metadata (tool name, descriptions) and 'Skill' wrapper only matter
+-- when you want agent-driven dispatch.  Otherwise just import the functions
+-- you need and use them directly.
 --
--- = This file
+-- = This skill
 --
--- This skill does one thing: echo text back.  It has no effect of its own
--- (no IO, no state), so the tools run in a bare @Sem (Fail ':  r)@.  Real
--- skills will add their own effect to @r@; see @skills\/cron\/@ for an
--- example with a non-trivial effect.
+-- A single @echo@ tool: returns its input unchanged.  No effect required —
+-- the tool is purely computational.  This makes it the simplest possible
+-- example of the skill structure.  See @skills\/cron\/@ for a skill with a
+-- non-trivial effect, an in-memory interpreter, and a richer tool set.
 module Skill.Example
-  ( -- * Skill values
-    --
-    -- Two constructors are provided to demonstrate the two prompt patterns.
-    -- In a real skill you would typically expose only one.
-    exampleSkill
-  , exampleSkillFromPrompts
-    -- * Tool (exported so callers can use it directly)
-  , echo
+  ( -- * Tools
+    echo
+  , echoLoud
+  , echoSimple
     -- * Types
   , EchoInput (..)
   , EchoResult (..)
   ) where
 
 import Data.Text (Text)
-import Polysemy (Sem)
+import qualified Data.Text as T
+import Polysemy (Sem, Member)
 import Polysemy.Fail (Fail)
 import Autodocodec (HasCodec (..))
-import UniversalLLM.Tools (ToolFunction (..), ToolParameter (..), LLMTool (..))
-import Runix.LLM.ToolInstances ()  -- Callable/ToolFunction instances for Sem
-import Runix.Skill (Skill (..))
-import qualified Skill.Example.Prompt as Prompt
+import UniversalLLM.Tools (ToolFunction (..), ToolParameter (..), mkTool, ToolWrapped)
+import Runix.Skill ()  -- pulls in orphan Callable/Tool instances for Sem
 
 --------------------------------------------------------------------------------
--- Parameter and result types
+-- echo
 --
--- Each tool argument and result needs three things:
---   * A newtype wrapper (for type safety — prevents mixing up arguments)
---   * HasCodec (for JSON serialisation/deserialisation by the LLM layer)
---   * ToolParameter (for the name and description shown to the LLM)
---
--- Derive HasCodec via the underlying type when the representation is
--- identical (e.g. a newtype over Text).
+-- The simplest possible tool: purely computational, no constraints, cannot
+-- fail.  The bare @Sem r@ with no constraint means this function makes no
+-- demands on the effect row at all — it works in any context.
 --------------------------------------------------------------------------------
 
-newtype EchoInput = EchoInput Text
-  deriving stock (Show, Eq)
-  deriving (HasCodec) via Text
+newtype EchoInput  = EchoInput  Text deriving stock (Show, Eq) deriving (HasCodec) via Text
+newtype EchoResult = EchoResult Text deriving stock (Show, Eq) deriving (HasCodec) via Text
+
+echo :: EchoInput -> Sem r EchoResult
+echo (EchoInput t) = return (EchoResult t)
 
 instance ToolParameter EchoInput where
   paramName        _ _ = "input"
   paramDescription _   = "the text to echo back"
 
-newtype EchoResult = EchoResult Text
-  deriving stock (Show, Eq)
-  deriving (HasCodec) via Text
-
--- | Results also need ToolParameter (for the JSON schema) and ToolFunction
--- (for the tool name and description that appear in the LLM's tool list).
 instance ToolParameter EchoResult where
   paramName        _ _ = "result"
   paramDescription _   = "the echoed text, unchanged"
@@ -119,68 +108,55 @@ instance ToolFunction EchoResult where
   toolFunctionDescription _ = "Echo the input text back unchanged"
 
 --------------------------------------------------------------------------------
--- Tools
+-- echoLoud
 --
--- A tool is a function with signature:
+-- Demonstrates precondition checking via 'fail'.  @Member Fail r@ expresses
+-- that this tool calls 'fail' under some conditions; compare with 'echo' which
+-- has no constraints at all.
 --
---   myTool :: forall r. Member MyEffect r => Arg -> Sem (Fail ': r) Result
+-- 'Fail' is always available during tool execution regardless of what @r@
+-- contains — tools don't need to know where it comes from or who catches it.
+-- Any failure is reported back to the LLM as a tool error, never propagated
+-- into the surrounding program.
 --
--- The 'forall r' keeps the tool polymorphic in the caller's effect row.
--- 'Fail' is prepended so the tool can fail with a user-visible message.
--- Effects the tool needs (e.g. Cron, FileSystem) go in the constraint.
---
--- This echo tool has no effects of its own, so the constraint is empty.
+-- 'EchoInput' is reused from 'echo'; no need to repeat its instances.
 --------------------------------------------------------------------------------
 
--- | Echo the input text back unchanged.
---
--- This is the simplest possible tool: pure, no effects, cannot fail.
--- A real tool would have effects in the constraint and might call @fail@.
-echo :: forall r. EchoInput -> Sem (Fail ': r) EchoResult
-echo (EchoInput t) = return (EchoResult t)
+newtype EchoLoudResult = EchoLoudResult Text deriving stock (Show, Eq) deriving (HasCodec) via Text
+
+echoLoud :: Member Fail r => EchoInput -> Sem r EchoLoudResult
+echoLoud (EchoInput t)
+  | T.null (T.strip t) = fail "input must not be empty"
+  | otherwise          = return (EchoLoudResult (T.toUpper t))
+
+instance ToolParameter EchoLoudResult where
+  paramName        _ _ = "result"
+  paramDescription _   = "the echoed text in uppercase"
+
+instance ToolFunction EchoLoudResult where
+  toolFunctionName        _ = "echo_loud"
+  toolFunctionDescription _ = "Echo the input text back in uppercase. Fails if the input is empty."
 
 --------------------------------------------------------------------------------
--- Skill assembly
+-- echoSimple
 --
--- The Skill record bundles the identity, system prompt, and tools.
--- skillSystemPrompt is the standing instruction given to the agent;
--- it should describe what the skill can do and any important constraints.
+-- The same as 'echo' but defined with 'mkTool' instead of a 'ToolFunction'
+-- instance on the result type.
 --
--- Each tool is wrapped in LLMTool, which extracts the description metadata
--- (via ToolFunction / ToolParameter) for the LLM's tool list.
+-- 'mkTool' describes the /function/: name and description are tied to this
+-- specific wrapped instance.  'ToolFunction' describes the /result type/:
+-- any function that produces an 'EchoResult' is automatically a valid tool,
+-- regardless of how many arguments it takes or how it gets there, and each
+-- parameter describes itself independently via 'ToolParameter'.
 --
--- The 'forall r' on the skill value propagates down to each tool, keeping
--- everything polymorphic in the caller's effect row.
+-- Use 'mkTool' when you have no unique return type to hang a 'ToolFunction'
+-- instance on.  If you do have (or can newtype) a distinct result type,
+-- 'ToolFunction' is strictly better: multiple implementations can coexist,
+-- transformations compose naturally before wrapping, and the description
+-- travels with the type rather than with one particular function.
+--
+-- No new instances needed — 'EchoInput' and 'EchoResult' are already covered.
 --------------------------------------------------------------------------------
 
--- | Example skill with an inline system prompt.
---
--- This is the __inline pattern__: the system prompt is a plain 'Text'
--- constant in source.  Skill construction is pure — no 'IO' required.
--- Good for short prompts or when you want the skill to be a simple value.
---
--- See 'exampleSkillFromPrompts' for the file-based alternative.
-exampleSkill :: forall r. Skill r
-exampleSkill = exampleSkillFromPrompts Prompt.Prompts { Prompt.agent = Prompt.defaultAgent }
-
--- | Example skill with prompts loaded from @prompts\/*.md@ files.
---
--- This is the __file-based pattern__: prompts live in standalone @.md@ files
--- distributed with the package and loaded at startup via 'Prompt.loadPrompts'.
--- Good for longer prompts you want to read and edit without touching Haskell.
---
--- Typical usage:
---
--- @
--- main :: IO ()
--- main = do
---   prompts <- Skill.Example.Prompt.loadPrompts
---   let skill = exampleSkillFromPrompts prompts
---   ...
--- @
-exampleSkillFromPrompts :: forall r. Prompt.Prompts -> Skill r
-exampleSkillFromPrompts prompts = Skill
-  { skillId           = "example"
-  , skillSystemPrompt = Prompt.agent prompts
-  , skillTools        = [ LLMTool (echo @r) ]
-  }
+echoSimple :: ToolWrapped (EchoInput -> Sem r EchoResult) (EchoInput, ())
+echoSimple = mkTool "echo_simple" "Echo the input text back unchanged" echo
