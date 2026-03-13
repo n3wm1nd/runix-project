@@ -38,7 +38,6 @@ library
     import:           warnings, extensions
     exposed-modules:
         Skill.Example
-      , Skill.Example.Prompt
     build-depends:
         base            >=4.17 && <5
       , polysemy        >=1.9

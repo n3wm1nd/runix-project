@@ -43,7 +43,6 @@ library
         Cron.Effect
       , Cron.Interpreter
       , Cron.InMemory
-      , Cron.Prompt
       , Cron.Skill
     build-depends:
         base            >=4.17 && <5
