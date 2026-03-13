@@ -1,50 +1,68 @@
--- | Cron skill assembly: tool functions + 'Skill' value.
---
--- Tool functions live here (not in "Cron.Tools") because they need the
--- 'Cron' effect.  "Cron.Tools" only contains the wire types.
+-- | Cron skill: tool functions and LLM metadata.
 module Cron.Skill
-  ( -- * Skill value
-    cronSkill
-    -- * Individual tool functions (exported for unit testing)
-  , cronList
+  ( -- * Tool functions (exported for direct use and unit testing)
+    cronList
   , cronAdd
   , cronRemove
   , cronEdit
+    -- * Types
+  , CronPattern (..)
+  , CronSchedule (..)
+  , CronCommand (..)
+  , CronCommentField (..)
+  , CronListResult (..)
+  , CronAddResult (..)
+  , CronRemoveResult (..)
+  , CronEditResult (..)
   ) where
 
+import Data.Text (Text)
 import qualified Data.Text as T
-import Polysemy (Sem, Member, Members)
-import Polysemy.Fail (Fail)
-
-import UniversalLLM.Tools (LLMTool (..))
-import Runix.LLM.ToolInstances ()  -- Callable/Tool instances for Sem
-import Runix.Skill (Skill (..))
+import Polysemy (Sem, Member)
+import Autodocodec (HasCodec (..))
+import UniversalLLM.Tools (ToolFunction (..), ToolParameter (..))
 import Cron.Effect
   ( Cron, listCrontab, setCrontab
   , CrontabText (..)
   , formatCrontab
   )
-import Cron.Tools
 
 --------------------------------------------------------------------------------
--- Tool functions
+-- cron_list
 --------------------------------------------------------------------------------
 
-cronList :: forall r. Member Cron r => Sem (Fail ': r) CronListResult
+newtype CronListResult = CronListResult Text deriving stock (Show, Eq) deriving (HasCodec) via Text
+
+cronList :: Member Cron r => Sem r CronListResult
 cronList = do
   ct <- listCrontab
   let formatted = formatCrontab ct
   return $ CronListResult $
-    if T.null (T.strip formatted)
-      then "(crontab is empty)"
-      else formatted
+    if T.null (T.strip formatted) then "(crontab is empty)" else formatted
+
+instance ToolParameter CronListResult where
+  paramName        = "cron_list_result"
+  paramDescription = "the current crontab"
+
+instance ToolFunction CronListResult where
+  toolFunctionName        = "cron_list"
+  toolFunctionDescription = "List all current cron jobs. Call this first to see what exists."
+
+--------------------------------------------------------------------------------
+-- cron_add
+--------------------------------------------------------------------------------
+
+newtype CronSchedule     = CronSchedule     Text deriving stock (Show, Eq) deriving (HasCodec) via Text
+newtype CronCommand      = CronCommand      Text deriving stock (Show, Eq) deriving (HasCodec) via Text
+newtype CronCommentField = CronCommentField Text deriving stock (Show, Eq) deriving (HasCodec) via Text
+newtype CronAddResult    = CronAddResult    Text deriving stock (Show, Eq) deriving (HasCodec) via Text
 
 cronAdd
-  :: forall r. Member Cron r
+  :: Member Cron r
   => CronSchedule
   -> CronCommand
   -> Maybe CronCommentField
-  -> Sem (Fail ': r) CronAddResult
+  -> Sem r CronAddResult
 cronAdd (CronSchedule sched) (CronCommand cmd) maybeComment = do
   CrontabText existing <- listCrontab
   let comment = case maybeComment of
@@ -57,10 +75,34 @@ cronAdd (CronSchedule sched) (CronCommand cmd) maybeComment = do
   setCrontab (CrontabText updated)
   return $ CronAddResult $ "Added: " <> newLine
 
-cronRemove
-  :: forall r. Member Cron r
-  => CronPattern
-  -> Sem (Fail ': r) CronRemoveResult
+instance ToolParameter CronSchedule where
+  paramName        = "schedule"
+  paramDescription = "cron schedule expression, e.g. '0 * * * *' or '@daily'"
+
+instance ToolParameter CronCommand where
+  paramName        = "command"
+  paramDescription = "the shell command to run"
+
+instance ToolParameter CronCommentField where
+  paramName        = "comment"
+  paramDescription = "optional human-readable comment (omit the leading #)"
+
+instance ToolParameter CronAddResult where
+  paramName        = "cron_add_result"
+  paramDescription = "confirmation of the added cron entry"
+
+instance ToolFunction CronAddResult where
+  toolFunctionName        = "cron_add"
+  toolFunctionDescription = "Add a new cron job. Provide a schedule, a command, and an optional comment."
+
+--------------------------------------------------------------------------------
+-- cron_remove
+--------------------------------------------------------------------------------
+
+newtype CronPattern      = CronPattern      Text deriving stock (Show, Eq) deriving (HasCodec) via Text
+newtype CronRemoveResult = CronRemoveResult Text deriving stock (Show, Eq) deriving (HasCodec) via Text
+
+cronRemove :: Member Cron r => CronPattern -> Sem r CronRemoveResult
 cronRemove (CronPattern pat) = do
   CrontabText raw <- listCrontab
   let allLines  = T.lines raw
@@ -79,11 +121,29 @@ cronRemove (CronPattern pat) = do
         <> " entries match '" <> pat <> "'. Be more specific:\n"
         <> T.unlines multiple
 
-cronEdit
-  :: forall r. Member Cron r
-  => CronPattern
-  -> CronSchedule
-  -> Sem (Fail ': r) CronEditResult
+instance ToolParameter CronPattern where
+  paramName        = "pattern"
+  paramDescription = "substring to match against cron entries"
+
+instance ToolParameter CronRemoveResult where
+  paramName        = "cron_remove_result"
+  paramDescription = "confirmation or error message for the removal"
+
+instance ToolFunction CronRemoveResult where
+  toolFunctionName        = "cron_remove"
+  toolFunctionDescription =
+    "Remove a cron job whose entry contains the given pattern. \
+    \Fails if zero or more than one entry matches — be specific."
+
+--------------------------------------------------------------------------------
+-- cron_edit
+--------------------------------------------------------------------------------
+
+newtype CronEditResult = CronEditResult Text deriving stock (Show, Eq) deriving (HasCodec) via Text
+
+-- | Change the schedule of an existing cron job matched by pattern.
+-- CronPattern and CronSchedule instances are already defined above.
+cronEdit :: Member Cron r => CronPattern -> CronSchedule -> Sem r CronEditResult
 cronEdit (CronPattern pat) (CronSchedule newSched) = do
   CrontabText raw <- listCrontab
   let allLines = T.lines raw
@@ -107,31 +167,22 @@ cronEdit (CronPattern pat) (CronSchedule newSched) = do
     replaceLine _ line
       | T.isInfixOf pat line = replaceSchedule newSched line
       | otherwise             = line
-
     replaceSchedule sched line =
       let tokens = T.words line
           (_, rest) = splitSchedule tokens
       in sched <> " " <> T.unwords rest
-
     splitSchedule [] = ([], [])
     splitSchedule ts@(t:trest)
       | "@" `T.isPrefixOf` t = ([t], trest)
       | otherwise             = splitAt 5 ts
 
---------------------------------------------------------------------------------
--- Skill assembly
---------------------------------------------------------------------------------
+instance ToolParameter CronEditResult where
+  paramName        = "cron_edit_result"
+  paramDescription = "old and new cron entry for confirmation"
 
-cronSkill :: forall r. Members '[Cron, Fail] r => Skill r
-cronSkill = Skill
-  { skillId           = "cron"
-  , skillSystemPrompt = "You are a cron job manager. Help the user manage their crontab: \
-                        \list jobs, add new scheduled tasks, remove existing ones, and edit \
-                        \schedules. Always confirm what you did after making changes."
-  , skillTools =
-      [ LLMTool (cronList @r)
-      , LLMTool (cronAdd @r)
-      , LLMTool (cronRemove @r)
-      , LLMTool (cronEdit @r)
-      ]
-  }
+instance ToolFunction CronEditResult where
+  toolFunctionName        = "cron_edit"
+  toolFunctionDescription =
+    "Change the schedule of an existing cron job matched by pattern. \
+    \Fails if zero or more than one entry matches."
+

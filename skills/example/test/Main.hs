@@ -12,8 +12,10 @@ module Main (main) where
 import Test.Hspec
 import qualified Runix.Skill.Testing as Testing
 import Runix.Skill.Testing (TestModel, toolCallFixture, textResponseFixture, assert, toolWasCalled)
-import Runix.Skill (runSkill)
-import Skill.Example (exampleSkill)
+import Runix.Skill (subagent)
+import UniversalLLM.Tools (LLMTool (..))
+import Skill.Example (echo, echoLoud)
+import Skill.Example.Prompt (defaultAgent)
 
 --------------------------------------------------------------------------------
 -- Test runners
@@ -29,6 +31,8 @@ import Skill.Example (exampleSkill)
 runMocked fixtures = Testing.run . Testing.interpretLLMMocked fixtures
 
 runIntegration = Testing.run . Testing.interpretLLM
+
+echoTools = [LLMTool echo, LLMTool echoLoud]
 
 --------------------------------------------------------------------------------
 -- Mocked tests
@@ -47,7 +51,7 @@ mockedSpec = describe "mocked" $ do
 
   it "calls echo when asked to echo" $
     runMocked [toolCallFixture "echo" "{\"input\":\"hello\"}", textResponseFixture] $ do
-      history <- runSkill @TestModel "Please echo 'hello'" exampleSkill
+      history <- subagent @TestModel defaultAgent echoTools "Please echo 'hello'"
       assert "echo was called" (toolWasCalled "echo" history)
 
 --------------------------------------------------------------------------------
@@ -63,7 +67,7 @@ integrationSpec = describe "integration" $ do
 
   it "calls echo when asked to echo" $
     runIntegration $ do
-      history <- runSkill @TestModel "Please echo the word 'hello'" exampleSkill
+      history <- subagent @TestModel defaultAgent echoTools "Please echo the word 'hello'"
       assert "echo was called" (toolWasCalled "echo" history)
 
 --------------------------------------------------------------------------------

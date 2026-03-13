@@ -16,6 +16,8 @@ maintainer:         runix@example.com
 category:           Development
 build-type:         Simple
 
+data-files:         prompts/agent.md
+
 common warnings
     ghc-options: -Wall -Wcompat -Wincomplete-uni-patterns
                  -Wincomplete-record-updates -Wredundant-constraints
@@ -41,7 +43,7 @@ library
         Cron.Effect
       , Cron.Interpreter
       , Cron.InMemory
-      , Cron.Tools
+      , Cron.Prompt
       , Cron.Skill
     build-depends:
         base            >=4.17 && <5
