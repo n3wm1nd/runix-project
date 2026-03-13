@@ -2,6 +2,9 @@
 --
 -- Provides the standard building blocks for skill test suites:
 --
+--  * 'TestModel' — a pre-wired Anthropic model type; use @\@TestModel@ in tests
+--    instead of declaring your own model type and instances.
+--
 --  * 'run' — root runner: interprets 'TestEnvironment' and 'Fail' into hspec
 --    outcomes (@IO ()@).  All IO is mediated through the effect stack.
 --
@@ -23,16 +26,18 @@
 -- @
 -- -- integration spec
 -- run = Testing.run . Testing.interpretLLM
--- runWithCrons initial = run . runState [] . evalState initial . cronInMemory
+-- runWithCrons initial = run . evalState initial . cronInMemory
 --
--- it "calls cron_list" $ run $ do
---   history <- runWithCrons (CrontabText "…") $
---     subagentLoopWith "Show me my cron jobs" [] (skillTools cronSkill)
---   assert "cron_list was called" (toolWasCalled "cron_list" history)
+-- it "calls cron_list" $
+--   runWithCrons (CrontabText "…") $ do
+--     history <- runSkill \@TestModel "Show me my cron jobs" cronSkill
+--     assert "cron_list was called" (toolWasCalled "cron_list" history)
 -- @
 module Runix.Skill.Testing
-  ( -- * Root runner
-    run
+  ( -- * Canonical test model
+    TestModel
+    -- * Root runner
+  , run
     -- * Test environment effect
   , TestEnvironment
     -- * LLM interpreters
@@ -56,8 +61,34 @@ import Polysemy (Sem, Embed, Member)
 import Polysemy.Fail (Fail)
 import Polysemy.State (State)
 import Runix.Logging (Logging)
-import UniversalLLM (Message (..), ToolCall (..))
+import UniversalLLM (Message (..), ToolCall (..), Model, ModelName (..), HasTools (..))
+import UniversalLLM.Providers.Anthropic (Anthropic (..), anthropicTools)
 import Runix.LLM (LLM)
+
+--------------------------------------------------------------------------------
+-- Canonical test model
+--------------------------------------------------------------------------------
+
+-- | Opaque tag for the default test model.
+data TestM = TestM deriving stock (Show, Eq)
+
+instance ModelName (Model TestM Anthropic) where
+  modelName _ = "claude-haiku-4-5-20251001"
+
+instance HasTools (Model TestM Anthropic) where
+  withTools = anthropicTools
+
+-- | The canonical model to use in skill tests.
+--
+-- Use this with @\@TestModel@ wherever a model type is needed:
+--
+-- @
+-- history <- runSkill \@TestModel "Show me my cron jobs" cronSkill
+-- @
+--
+-- It targets @claude-haiku-4-5-20251001@ via the Anthropic provider —
+-- fast and cheap for test runs, suitable for both mocked and integration tests.
+type TestModel = Model TestM Anthropic
 
 --------------------------------------------------------------------------------
 -- Root runner

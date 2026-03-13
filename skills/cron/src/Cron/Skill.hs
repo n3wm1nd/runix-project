@@ -124,7 +124,10 @@ cronEdit (CronPattern pat) (CronSchedule newSched) = do
 
 cronSkill :: forall r. Members '[Cron, Fail] r => Skill r
 cronSkill = Skill
-  { skillId    = "cron"
+  { skillId           = "cron"
+  , skillSystemPrompt = "You are a cron job manager. Help the user manage their crontab: \
+                        \list jobs, add new scheduled tasks, remove existing ones, and edit \
+                        \schedules. Always confirm what you did after making changes."
   , skillTools =
       [ LLMTool (cronList @r)
       , LLMTool (cronAdd @r)
