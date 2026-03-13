@@ -62,8 +62,12 @@
 -- skills will add their own effect to @r@; see @skills\/cron\/@ for an
 -- example with a non-trivial effect.
 module Skill.Example
-  ( -- * Skill value
+  ( -- * Skill values
+    --
+    -- Two constructors are provided to demonstrate the two prompt patterns.
+    -- In a real skill you would typically expose only one.
     exampleSkill
+  , exampleSkillFromPrompts
     -- * Tool (exported so callers can use it directly)
   , echo
     -- * Types
@@ -78,6 +82,7 @@ import Autodocodec (HasCodec (..))
 import UniversalLLM.Tools (ToolFunction (..), ToolParameter (..), LLMTool (..))
 import Runix.LLM.ToolInstances ()  -- Callable/ToolFunction instances for Sem
 import Runix.Skill (Skill (..))
+import qualified Skill.Example.Prompt as Prompt
 
 --------------------------------------------------------------------------------
 -- Parameter and result types
@@ -148,11 +153,34 @@ echo (EchoInput t) = return (EchoResult t)
 -- everything polymorphic in the caller's effect row.
 --------------------------------------------------------------------------------
 
+-- | Example skill with an inline system prompt.
+--
+-- This is the __inline pattern__: the system prompt is a plain 'Text'
+-- constant in source.  Skill construction is pure — no 'IO' required.
+-- Good for short prompts or when you want the skill to be a simple value.
+--
+-- See 'exampleSkillFromPrompts' for the file-based alternative.
 exampleSkill :: forall r. Skill r
-exampleSkill = Skill
+exampleSkill = exampleSkillFromPrompts Prompt.Prompts { Prompt.agent = Prompt.defaultAgent }
+
+-- | Example skill with prompts loaded from @prompts\/*.md@ files.
+--
+-- This is the __file-based pattern__: prompts live in standalone @.md@ files
+-- distributed with the package and loaded at startup via 'Prompt.loadPrompts'.
+-- Good for longer prompts you want to read and edit without touching Haskell.
+--
+-- Typical usage:
+--
+-- @
+-- main :: IO ()
+-- main = do
+--   prompts <- Skill.Example.Prompt.loadPrompts
+--   let skill = exampleSkillFromPrompts prompts
+--   ...
+-- @
+exampleSkillFromPrompts :: forall r. Prompt.Prompts -> Skill r
+exampleSkillFromPrompts prompts = Skill
   { skillId           = "example"
-  , skillSystemPrompt = "You are a helpful assistant with a single tool: echo. \
-                        \When asked to echo something, call the echo tool with \
-                        \exactly the text the user provided."
+  , skillSystemPrompt = Prompt.agent prompts
   , skillTools        = [ LLMTool (echo @r) ]
   }

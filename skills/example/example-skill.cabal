@@ -14,6 +14,9 @@ maintainer:         runix@example.com
 category:           Development
 build-type:         Simple
 
+data-files:
+    prompts/agent.md
+
 common warnings
     ghc-options: -Wall -Wcompat -Wincomplete-uni-patterns
                  -Wincomplete-record-updates -Wredundant-constraints
@@ -33,7 +36,9 @@ common extensions
 
 library
     import:           warnings, extensions
-    exposed-modules:  Skill.Example
+    exposed-modules:
+        Skill.Example
+      , Skill.Example.Prompt
     build-depends:
         base            >=4.17 && <5
       , polysemy        >=1.9

@@ -43,6 +43,7 @@ library
     import:           warnings, extensions
     exposed-modules:
         Runix.Skill
+      , Runix.Skill.PromptLoader
       , Runix.Skill.Testing
 
     build-depends:
