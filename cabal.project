@@ -1,6 +1,7 @@
 packages: runix
           libs/universal-llm
           libs/runix-tools
+          libs/sse-parser
           tasks/dndwiki
           apps/chatbot
           apps/runix-code
