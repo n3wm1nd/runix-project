@@ -2,6 +2,9 @@ packages: runix
           libs/universal-llm
           libs/runix-tools
           libs/sse-parser
+          libs/runix-skill
+          skills/example
+          skills/cron
           tasks/dndwiki
           apps/chatbot
           apps/runix-code

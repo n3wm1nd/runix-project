@@ -1,0 +1,70 @@
+cabal-version:      3.0
+name:               example-skill
+version:            0.1.0.0
+synopsis:           Example skill — demonstrates the runix skill scaffold
+description:
+  A minimal skill that exposes a single echo tool.  Intended as a
+  reference implementation and smoke-test for the skill packaging
+  infrastructure.  See README.md for the full skill description.
+
+license:            GPL-3.0-or-later
+license-file:       LICENSE
+author:             Runix Contributors
+maintainer:         runix@example.com
+category:           Development
+build-type:         Simple
+
+common warnings
+    ghc-options: -Wall -Wcompat -Wincomplete-uni-patterns
+                 -Wincomplete-record-updates -Wredundant-constraints
+
+common extensions
+    default-extensions:
+        DataKinds
+        DerivingStrategies
+        DerivingVia
+        FlexibleContexts
+        GADTs
+        LambdaCase
+        OverloadedStrings
+        ScopedTypeVariables
+        TypeApplications
+        TypeOperators
+
+library
+    import:           warnings, extensions
+    exposed-modules:  Skill.Example
+    build-depends:
+        base            >=4.17 && <5
+      , polysemy        >=1.9
+      , polysemy-plugin
+      , text
+      , autodocodec
+      , universal-llm
+      , runix
+      , runix-tools
+      , runix-skill
+    hs-source-dirs:   src
+    default-language: Haskell2010
+    ghc-options:      -fplugin=Polysemy.Plugin
+
+test-suite example-skill-test
+    import:           warnings, extensions
+    type:             exitcode-stdio-1.0
+    main-is:          Main.hs
+    hs-source-dirs:   test
+    build-depends:
+        base
+      , polysemy
+      , polysemy-plugin
+      , text
+      , aeson
+      , bytestring
+      , universal-llm
+      , runix
+      , runix-tools
+      , runix-skill
+      , example-skill
+      , hspec
+    default-language: Haskell2010
+    ghc-options:      -fplugin=Polysemy.Plugin

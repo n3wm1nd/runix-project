@@ -1,0 +1,62 @@
+cabal-version:      3.0
+name:               runix-skill
+version:            0.1.0.0
+synopsis:           Skill packaging infrastructure for Runix agents
+description:
+  Defines the Skill record and the shared test infrastructure for skill
+  test suites.  Skills are self-contained agent capabilities: a bundle of
+  LLM tools, a short description (this synopsis), and a long description
+  (README.md).  Runix.Skill.Testing provides the root runner, LLM
+  interpreters (mocked and cached/live), SSE fixture helpers, and history
+  predicates used across all skill test suites.
+
+license:            GPL-3.0-or-later
+license-file:       LICENSE
+author:             Runix Contributors
+maintainer:         runix@example.com
+category:           Development
+build-type:         Simple
+
+common warnings
+    ghc-options: -Wall
+                 -Wcompat
+                 -Wincomplete-uni-patterns
+                 -Wincomplete-record-updates
+                 -Wredundant-constraints
+
+common extensions
+    default-extensions:
+        DataKinds
+        DerivingStrategies
+        FlexibleContexts
+        FlexibleInstances
+        GADTs
+        LambdaCase
+        OverloadedStrings
+        RankNTypes
+        ScopedTypeVariables
+        TypeApplications
+        TypeFamilies
+        TypeOperators
+
+library
+    import:           warnings, extensions
+    exposed-modules:
+        Runix.Skill
+      , Runix.Skill.Testing
+
+    build-depends:
+        base            >=4.17 && <5
+      , polysemy        >=1.9
+      , polysemy-plugin
+      , text
+      , aeson
+      , bytestring
+      , universal-llm
+      , runix
+      , runix-tools
+      , hspec
+
+    hs-source-dirs:   src
+    default-language: Haskell2010
+    ghc-options:      -fplugin=Polysemy.Plugin

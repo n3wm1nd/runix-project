@@ -1,0 +1,83 @@
+cabal-version:      3.0
+name:               cron-skill
+version:            0.1.0.0
+synopsis:           Cron skill — manage the user's crontab via natural language
+description:
+  Exposes cron job management as LLM tools: list, add, remove, and edit
+  crontab entries.  The agent can read the current crontab, add new jobs
+  with a schedule and command, remove jobs matching a pattern, and edit
+  the schedule or command of an existing job.
+  See README.md for the full skill description.
+
+license:            GPL-3.0-or-later
+license-file:       LICENSE
+author:             Runix Contributors
+maintainer:         runix@example.com
+category:           Development
+build-type:         Simple
+
+common warnings
+    ghc-options: -Wall -Wcompat -Wincomplete-uni-patterns
+                 -Wincomplete-record-updates -Wredundant-constraints
+
+common extensions
+    default-extensions:
+        DataKinds
+        DerivingStrategies
+        DerivingVia
+        FlexibleContexts
+        FlexibleInstances
+        GADTs
+        LambdaCase
+        OverloadedStrings
+        ScopedTypeVariables
+        TypeApplications
+        TypeFamilies
+        TypeOperators
+
+library
+    import:           warnings, extensions
+    exposed-modules:
+        Cron.Effect
+      , Cron.Interpreter
+      , Cron.InMemory
+      , Cron.Tools
+      , Cron.Skill
+    build-depends:
+        base            >=4.17 && <5
+      , polysemy        >=1.9
+      , polysemy-plugin
+      , text
+      , bytestring
+      , autodocodec
+      , universal-llm
+      , runix
+      , runix-tools
+      , runix-skill
+    hs-source-dirs:   src
+    default-language: Haskell2010
+    ghc-options:      -fplugin=Polysemy.Plugin
+
+test-suite cron-skill-test
+    import:           warnings, extensions
+    type:             exitcode-stdio-1.0
+    main-is:          Main.hs
+    hs-source-dirs:   test
+    other-modules:    Cron.InterpreterSpec
+                    , Cron.MockedSpec
+                    , Cron.IntegrationSpec
+    build-depends:
+        base
+      , polysemy
+      , polysemy-plugin
+      , text
+      , aeson
+      , bytestring
+      , universal-llm
+      , runix
+      , runix-tools
+      , runix-skill
+      , cron-skill
+      , hspec
+    default-language: Haskell2010
+    ghc-options:      -fplugin=Polysemy.Plugin -Wno-missing-signatures -Wno-incomplete-uni-patterns
