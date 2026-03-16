@@ -8,3 +8,4 @@ packages: runix
           tasks/dndwiki
           apps/chatbot
           apps/runix-code
+          apps/prompttuner
