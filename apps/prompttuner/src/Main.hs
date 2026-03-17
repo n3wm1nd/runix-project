@@ -1,16 +1,16 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE TypeAbstractions #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE KindSignatures #-}
 
 -- | PromptTuner — exploit LLM sycophancy to make any idea sound brilliant.
 --
 -- Flow:
---   1. Presenter LLM (stateful) pitches the idea.
---   2. Evaluator LLM (fresh each round) reacts freely to the pitch, then answers
---      two follow-up questions in the same conversation:
---        a. "Rate this idea 1-10."
---        b. "One sentence: overall assessment."
+--   1. Presenter LLM (stateless) pitches the idea.
+--   2. Evaluator LLM (fresh each round) reacts freely to the pitch, then
+--      receives a founder rebuttal, then scores with SCORE + VERDICT.
 --   3. If the score is >= SUCCESS_THRESHOLD, we're done.
---   4. Otherwise, feed the free-form reaction + summary back to the presenter.
+--   4. Otherwise, the presenter reflects and the cycle repeats.
 --   Repeat up to MAX_ATTEMPTS times.
 --
 -- Environment variables:
@@ -19,8 +19,9 @@
 --   ANTHROPIC_OAUTH_TOKEN, ZAI_API_KEY, etc. — auth for respective providers
 module Main (main) where
 
-import Control.Monad (when)
+import Control.Monad (void, when)
 import Data.Char (isDigit)
+import Data.Kind (Type)
 import Data.List (find)
 import Data.Maybe (listToMaybe, mapMaybe)
 import System.Environment (getArgs, lookupEnv)
@@ -31,10 +32,11 @@ import qualified Data.Text.IO as TIO
 
 import Polysemy
 import Polysemy.Error (runError)
+import Polysemy.Fail
 
 import Runix.Runner (httpIO, withRequestTimeout, loggingIO, failLog)
-import Runix.LLM (queryLLM)
-import UniversalLLM (Message(..), ModelConfig(..))
+import Runix.LLM (LLM, queryLLM)
+import UniversalLLM (Message(..), ModelConfig(..), ProviderOf, SupportsSystemPrompt)
 
 import Runner (ModelInterpreter(..), ModelEntry(..), buildAvailableModels, entryInterpreter)
 import Config (resolveModelId)
@@ -55,8 +57,6 @@ successThreshold = 7
 --------------------------------------------------------------------------------
 
 -- | Extract the first 1-10 integer from a line of text.
--- Takes the first contiguous digit run after dropping non-digits.
--- Handles "7", "7/10", "7 out of 10", "Score: 8", "I'd say 9.", etc.
 parseScore :: T.Text -> Maybe Int
 parseScore t =
   let digits = T.takeWhile isDigit (T.dropWhile (not . isDigit) t)
@@ -69,8 +69,8 @@ parseScore t =
 -- Looks for "SCORE: N" and "VERDICT: ..." lines.
 extractScoring :: T.Text -> (Maybe Int, T.Text)
 extractScoring t =
-  let ls     = T.lines t
-      score  = listToMaybe . mapMaybe scoreFromLine $ ls
+  let ls      = T.lines t
+      score   = listToMaybe . mapMaybe scoreFromLine $ ls
       verdict = maybe "" (T.strip . T.drop 8) . listToMaybe . filter ("VERDICT:" `T.isPrefixOf`) $ ls
   in (score, verdict)
   where
@@ -141,9 +141,6 @@ presenterSystemPrompt idea = T.unlines
   , "Output only the pitch text. No preamble, no headings, no meta-commentary."
   ]
 
--- | Prompt for the reflection step.
--- The presenter is asked to reason about what went wrong and what to try next,
--- given the pitch it just wrote and the evaluator's reaction.
 reflectionPrompt :: T.Text -> T.Text -> T.Text -> Maybe Int -> T.Text
 reflectionPrompt idea pitch reaction score = T.unlines
   [ "You just wrote the following pitch for this idea: " <> idea
@@ -177,9 +174,6 @@ evaluatorSystemPrompt = T.unlines
   , "concerns, you will give a final score. Be direct and specific throughout."
   ]
 
--- | System prompt for the rebuttal step.
--- The presenter responds to the evaluator's reaction in the style of a founder
--- fielding tough questions in a pitch meeting.
 rebuttalSystemPrompt :: T.Text
 rebuttalSystemPrompt = T.unlines
   [ "You are the founder behind this pitch, now in the room with a skeptical investor."
@@ -197,8 +191,6 @@ rebuttalSystemPrompt = T.unlines
   , "- Output only your response. No preamble, no meta-commentary."
   ]
 
--- | Build the rebuttal user message: the evaluator's reaction, framed as something
--- the founder is responding to.
 rebuttalMsg :: T.Text -> Message pm
 rebuttalMsg reaction = UserText $ T.unlines
   [ "The investor just said:"
@@ -208,8 +200,6 @@ rebuttalMsg reaction = UserText $ T.unlines
   , "Respond to their concerns."
   ]
 
--- | Second turn: ask for score + summary in one message, with a rigid template
--- the model must fill in. Keeping it structured reduces the chance of a blank response.
 scoringQuestion :: T.Text
 scoringQuestion = T.unlines
   [ "Now answer these two questions. Use exactly this format, nothing else:"
@@ -219,20 +209,54 @@ scoringQuestion = T.unlines
   ]
 
 --------------------------------------------------------------------------------
--- Core Tuning Loop
+-- Progress Effect
 --------------------------------------------------------------------------------
 
--- | A record of one completed attempt, passed back to the presenter as context.
+data Progress (m :: Type -> Type) a where
+  ReportHeader   :: T.Text -> Progress m ()
+  ReportAttempt  :: Int -> Int -> Progress m ()
+  ReportPitch    :: T.Text -> Progress m ()
+  ReportEval     :: T.Text -> Progress m ()
+  ReportRebuttal :: T.Text -> Progress m ()
+  ReportReeval   :: T.Text -> Progress m ()
+  ReportRating   :: Maybe Int -> T.Text -> Progress m ()
+  ReportReflect  :: T.Text -> Progress m ()
+  ReportSuccess  :: Int -> Int -> Progress m ()
+  ReportGaveUp   :: Progress m ()
+
+makeSem ''Progress
+
+-- | Interpreter that prints all progress to stdout.
+runProgressStdout :: Member (Embed IO) r => Sem (Progress : r) a -> Sem r a
+runProgressStdout = interpret $ \case
+  ReportHeader idea   -> embed $ TIO.putStrLn ("=== PromptTuner: " <> idea) >> TIO.putStrLn ""
+  ReportAttempt n tot -> embed $ TIO.putStrLn ("--- Attempt " <> T.pack (show n) <> " / " <> T.pack (show tot) <> " ---")
+  ReportPitch p       -> embed $ TIO.putStrLn "[PITCH]" >> TIO.putStrLn p >> TIO.putStrLn ""
+  ReportEval r        -> embed $ TIO.putStrLn "[EVALUATION]" >> TIO.putStrLn r >> TIO.putStrLn ""
+  ReportRebuttal rb   -> embed $ TIO.putStrLn "[REBUTTAL]" >> TIO.putStrLn rb >> TIO.putStrLn ""
+  ReportReeval rv     -> embed $ TIO.putStrLn "[RE-EVALUATION]" >> TIO.putStrLn rv
+  ReportRating s v    -> embed $ do
+    TIO.putStrLn $ "[RATING] " <> maybe "?" (T.pack . show) s <> "/10"
+    TIO.putStrLn $ "[SUMMARY] " <> v
+    TIO.putStrLn ""
+  ReportReflect rf    -> embed $ TIO.putStrLn "[REFLECTION]" >> TIO.putStrLn rf >> TIO.putStrLn ""
+  ReportSuccess n att -> embed $ TIO.putStrLn $
+    "[ SUCCESS ] Score " <> T.pack (show n) <> "/10 on attempt " <> T.pack (show att) <> "!"
+  ReportGaveUp        -> embed $ TIO.putStrLn
+    "[ GAVE UP ] Reached maximum attempts without convincing the evaluator."
+
+--------------------------------------------------------------------------------
+-- Attempt Record
+--------------------------------------------------------------------------------
+
 data AttemptRecord = AttemptRecord
   { arAttempt    :: Int
   , arScore      :: Maybe Int
-  , arSummary    :: T.Text  -- ^ Evaluator's one-sentence verdict
-  , arReflection :: T.Text  -- ^ Presenter's own structured reflection
+  , arSummary    :: T.Text
+  , arReflection :: T.Text
   }
 
--- | Render the attempt log into a single user message for the presenter.
--- Each entry shows the score, the evaluator's verdict, and the presenter's
--- own reflection — no raw pitch text, no rambling reaction excerpts.
+-- | Render the attempt log into a presenter user message.
 attemptLogMsg :: [AttemptRecord] -> T.Text -> Message pm
 attemptLogMsg records idea = UserText $ T.unlines $
   [ "You are writing a pitch for: " <> idea
@@ -253,143 +277,99 @@ attemptLogMsg records idea = UserText $ T.unlines $
       , ""
       ]
 
--- | Run the full tuning loop.
---
--- The presenter receives a condensed attempt log each round (scores + verdicts,
--- no raw pitch text) so it can learn what didn't work without being tempted to
--- continue a conversation. The evaluator is completely fresh each round.
-runTuner :: T.Text -> ModelInterpreter -> ModelInterpreter -> IO ()
+--------------------------------------------------------------------------------
+-- Single Attempt
+--------------------------------------------------------------------------------
+
+-- | Run one full attempt: pitch → evaluation → rebuttal → re-eval → scoring → reflection.
+-- Runs directly in the combined LLM effect stack — no IO round-tripping.
+-- Returns the full AttemptRecord; the caller decides whether the score is good enough.
+runAttempt
+  :: forall pm em r
+   . ( Members [LLM pm, LLM em, Progress, Fail] r
+     , SupportsSystemPrompt (ProviderOf pm)
+     , SupportsSystemPrompt (ProviderOf em)
+     )
+  => T.Text              -- ^ idea being pitched
+  -> Int
+  -> [AttemptRecord]
+  -> Sem r AttemptRecord
+runAttempt idea attempt records = do
+  let presConfigs  :: [ModelConfig pm]
+      presConfigs   = [SystemPrompt (presenterSystemPrompt idea)]
+      rebutConfigs :: [ModelConfig pm]
+      rebutConfigs  = [SystemPrompt rebuttalSystemPrompt]
+      evalConfigs  :: [ModelConfig em]
+      evalConfigs   = [SystemPrompt evaluatorSystemPrompt]
+
+  -- ── Pitch ──────────────────────────────────────────────────────────────────
+  let presMsg :: Message pm
+      presMsg
+        | attempt == 1 = UserText "Write your pitch."
+        | otherwise    = attemptLogMsg records idea
+
+  pitchMsgs <- queryLLM @pm presConfigs [presMsg]
+  let pitch = mconcat [t | AssistantText t <- pitchMsgs]
+  reportPitch pitch
+
+  -- ── Initial evaluation ────────────────────────────────────────────────────
+  let pitchMsg = UserText ("Here is the pitch:\n\n" <> pitch)
+  reactionMsgs <- queryLLM @em evalConfigs [pitchMsg]
+  let reaction        = mconcat [t | AssistantText t <- reactionMsgs]
+      reactionHistory = [pitchMsg] ++ reactionMsgs
+  reportEval reaction
+
+  -- ── Rebuttal ──────────────────────────────────────────────────────────────
+  rebuttalMsgs <- queryLLM @pm rebutConfigs [rebuttalMsg reaction]
+  let rebuttal = mconcat [t | AssistantText t <- rebuttalMsgs]
+  reportRebuttal rebuttal
+
+  -- ── Re-evaluation + scoring ───────────────────────────────────────────────
+  let hist = reactionHistory ++ [UserText ("The founder responds:\n\n" <> rebuttal)]
+  reevalMsgs  <- queryLLM @em evalConfigs hist
+  let reeval   = mconcat [t | AssistantText t <- reevalMsgs]
+  reportReeval reeval
+
+  scoringMsgs <- queryLLM @em evalConfigs (hist ++ reevalMsgs ++ [UserText scoringQuestion])
+  let (score, summary) = extractScoring $ mconcat [t | AssistantText t <- scoringMsgs]
+  reportRating score summary
+
+  -- ── Reflection (always — informs the next attempt if there is one) ─────────
+  reflectMsgs <- queryLLM @pm presConfigs
+                   [UserText (reflectionPrompt idea pitch reaction score)]
+  let reflection = mconcat [t | AssistantText t <- reflectMsgs]
+  reportReflect reflection
+
+  pure $ AttemptRecord attempt score summary reflection
+
+--------------------------------------------------------------------------------
+-- Tuning Loop
+--------------------------------------------------------------------------------
+
+runTuner
+  :: T.Text
+  -> ModelInterpreter
+  -> ModelInterpreter
+  -> IO ()
 runTuner idea
          (ModelInterpreter @pm interpretPresenter _ _ _)
-         (ModelInterpreter @em interpretEvaluator _ _ _) = do
-  TIO.putStrLn $ "=== PromptTuner: " <> idea
-  TIO.putStrLn ""
-  go (1 :: Int) ([] :: [AttemptRecord])
+         (ModelInterpreter @em interpretEvaluator _ _ _) =
+  void . runM . runError @String . loggingIO . failLog
+    . httpIO (withRequestTimeout 300)
+    . interpretEvaluator
+    . interpretPresenter
+    . runProgressStdout $ do
+        reportHeader idea
+        go (1 :: Int) ([] :: [AttemptRecord])
   where
-    presenterConfigs :: [ModelConfig pm]
-    presenterConfigs = [SystemPrompt (presenterSystemPrompt idea)]
-
-    rebuttalConfigs :: [ModelConfig pm]
-    rebuttalConfigs = [SystemPrompt rebuttalSystemPrompt]
-
-    evaluatorConfigs :: [ModelConfig em]
-    evaluatorConfigs = [SystemPrompt evaluatorSystemPrompt]
-
     go attempt records
-      | attempt > maxAttempts =
-          TIO.putStrLn "[ GAVE UP ] Reached maximum attempts without convincing the evaluator."
+      | attempt > maxAttempts = reportGaveUp
       | otherwise = do
-          TIO.putStrLn $ "--- Attempt " <> T.pack (show attempt) <> " / " <> T.pack (show maxAttempts) <> " ---"
-
-          -- First attempt: simple request. Subsequent attempts: condensed log of what failed.
-          let presenterMsg :: Message pm
-              presenterMsg
-                | attempt == 1 = UserText "Write your pitch."
-                | otherwise    = attemptLogMsg records idea
-
-          -- Presenter is called statelessly — a single-turn request each time.
-          -- It has no memory of previous calls; all context is in presenterMsg.
-          pitchResult <-
-            runM . runError . loggingIO . failLog
-              . httpIO (withRequestTimeout 300)
-              . interpretPresenter
-              $ queryLLM @pm presenterConfigs [presenterMsg]
-
-          case pitchResult of
-            Left err -> hPutStrLn stderr ("Presenter error: " <> err) >> exitFailure
-            Right pitchMsgs -> do
-              let pitch = mconcat [t | AssistantText t <- pitchMsgs]
-
-              TIO.putStrLn "[PITCH]"
-              TIO.putStrLn pitch
-              TIO.putStrLn ""
-
-              -- Evaluator: fresh each round, three turns in one conversation.
-              --   Turn 1: free-form reaction to the pitch.
-              --   Turn 2: founder rebuttal (injected as a user message from the presenter).
-              --   Turn 3: structured SCORE + VERDICT.
-              evalResult <-
-                runM . runError . loggingIO . failLog
-                  . httpIO (withRequestTimeout 300)
-                  . interpretEvaluator
-                  $ do
-                      let pitchMsg = UserText ("Here is the pitch:\n\n" <> pitch)
-                      reactionMsgs <- queryLLM @em evaluatorConfigs [pitchMsg]
-                      let reaction = mconcat [t | AssistantText t <- reactionMsgs]
-                          reactionHistory = [pitchMsg] ++ reactionMsgs
-                      return (reaction, reactionHistory)
-
-              case evalResult of
-                Left err -> hPutStrLn stderr ("Evaluator error (reaction): " <> err) >> exitFailure
-                Right (reaction, reactionHistory) -> do
-                  TIO.putStrLn "[EVALUATION]"
-                  TIO.putStrLn reaction
-                  TIO.putStrLn ""
-
-                  -- Presenter rebuts — stateless single-turn call
-                  rebuttalResult <-
-                    runM . runError @String . loggingIO . failLog
-                      . httpIO (withRequestTimeout 300)
-                      . interpretPresenter
-                      $ queryLLM @pm rebuttalConfigs [rebuttalMsg reaction]
-
-                  let rebuttal = case rebuttalResult of
-                        Left _     -> "(no rebuttal)"
-                        Right msgs -> mconcat [t | AssistantText t <- msgs]
-
-                  TIO.putStrLn "[REBUTTAL]"
-                  TIO.putStrLn rebuttal
-                  TIO.putStrLn ""
-
-                  -- Evaluator responds to the rebuttal, then scores
-                  let rebuttalAsUser = UserText $ "The founder responds:\n\n" <> rebuttal
-                  reevalResult <-
-                    runM . runError @String . loggingIO . failLog
-                      . httpIO (withRequestTimeout 300)
-                      . interpretEvaluator
-                      $ do
-                          let historyWithRebuttal = reactionHistory ++ [rebuttalAsUser]
-                          reevalMsgs <- queryLLM @em evaluatorConfigs historyWithRebuttal
-                          let reeval = mconcat [t | AssistantText t <- reevalMsgs]
-                              historyWithReeval = historyWithRebuttal ++ reevalMsgs
-                          scoringMsgs <- queryLLM @em evaluatorConfigs
-                                           (historyWithReeval ++ [UserText scoringQuestion])
-                          let scoring = mconcat [t | AssistantText t <- scoringMsgs]
-                          return (reeval, scoring)
-
-                  let (reeval, scoring) = case reevalResult of
-                        Left _            -> ("(no re-evaluation)", "")
-                        Right (rv, sc)    -> (rv, sc)
-                      (score, summary) = extractScoring scoring
-
-                  TIO.putStrLn "[RE-EVALUATION]"
-                  TIO.putStrLn reeval
-                  TIO.putStrLn $ "[RATING] " <> maybe "?" (T.pack . show) score <> "/10"
-                  TIO.putStrLn $ "[SUMMARY] " <> summary
-                  TIO.putStrLn ""
-
-                  case score of
-                    Just n | n >= successThreshold ->
-                      TIO.putStrLn $ "[ SUCCESS ] Score " <> T.pack (show n)
-                        <> "/10 on attempt " <> T.pack (show attempt) <> "!"
-                    _ -> do
-                      reflectResult <-
-                        runM . runError @String . loggingIO . failLog
-                          . httpIO (withRequestTimeout 300)
-                          . interpretPresenter
-                          $ queryLLM @pm presenterConfigs
-                              [UserText (reflectionPrompt idea pitch reaction score)]
-
-                      let reflection = case reflectResult of
-                            Left _     -> "No reflection available."
-                            Right msgs -> mconcat [t | AssistantText t <- msgs]
-
-                      TIO.putStrLn "[REFLECTION]"
-                      TIO.putStrLn reflection
-                      TIO.putStrLn ""
-
-                      let record = AttemptRecord attempt score summary reflection
-                      go (attempt + 1) (records ++ [record])
+          reportAttempt attempt maxAttempts
+          record <- runAttempt @pm @em idea attempt records
+          case arScore record of
+            Just n | n >= successThreshold -> reportSuccess n attempt
+            _                              -> go (attempt + 1) (records ++ [record])
 
 --------------------------------------------------------------------------------
 -- Model Selection
