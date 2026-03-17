@@ -1,7 +1,5 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE TypeAbstractions #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE KindSignatures #-}
 
 -- | PromptTuner — exploit LLM sycophancy to make any idea sound brilliant.
 --
@@ -21,18 +19,19 @@ module Main (main) where
 
 import Control.Monad (void, when)
 import Data.Char (isDigit)
-import Data.Kind (Type)
 import Data.List (find)
 import Data.Maybe (listToMaybe, mapMaybe)
-import System.Environment (getArgs, lookupEnv)
+import System.Environment (lookupEnv)
 import System.Exit (exitFailure)
 import System.IO (hPutStrLn, stderr)
+
+import Options.Applicative
 import qualified Data.Text as T
-import qualified Data.Text.IO as TIO
 
 import Polysemy
 import Polysemy.Error (runError)
 import Polysemy.Fail
+import Polysemy.Tagged
 
 import Runix.Runner (httpIO, withRequestTimeout, loggingIO, failLog)
 import Runix.LLM (LLM, queryLLM)
@@ -40,6 +39,8 @@ import UniversalLLM (Message(..), ModelConfig(..), ProviderOf, SupportsSystemPro
 
 import Runner (ModelInterpreter(..), ModelEntry(..), buildAvailableModels, entryInterpreter)
 import Config (resolveModelId)
+import Progress
+import Export.Html (runProgressHtml)
 
 --------------------------------------------------------------------------------
 -- Constants
@@ -209,43 +210,6 @@ scoringQuestion = T.unlines
   ]
 
 --------------------------------------------------------------------------------
--- Progress Effect
---------------------------------------------------------------------------------
-
-data Progress (m :: Type -> Type) a where
-  ReportHeader   :: T.Text -> Progress m ()
-  ReportAttempt  :: Int -> Int -> Progress m ()
-  ReportPitch    :: T.Text -> Progress m ()
-  ReportEval     :: T.Text -> Progress m ()
-  ReportRebuttal :: T.Text -> Progress m ()
-  ReportReeval   :: T.Text -> Progress m ()
-  ReportRating   :: Maybe Int -> T.Text -> Progress m ()
-  ReportReflect  :: T.Text -> Progress m ()
-  ReportSuccess  :: Int -> Int -> Progress m ()
-  ReportGaveUp   :: Progress m ()
-
-makeSem ''Progress
-
--- | Interpreter that prints all progress to stdout.
-runProgressStdout :: Member (Embed IO) r => Sem (Progress : r) a -> Sem r a
-runProgressStdout = interpret $ \case
-  ReportHeader idea   -> embed $ TIO.putStrLn ("=== PromptTuner: " <> idea) >> TIO.putStrLn ""
-  ReportAttempt n tot -> embed $ TIO.putStrLn ("--- Attempt " <> T.pack (show n) <> " / " <> T.pack (show tot) <> " ---")
-  ReportPitch p       -> embed $ TIO.putStrLn "[PITCH]" >> TIO.putStrLn p >> TIO.putStrLn ""
-  ReportEval r        -> embed $ TIO.putStrLn "[EVALUATION]" >> TIO.putStrLn r >> TIO.putStrLn ""
-  ReportRebuttal rb   -> embed $ TIO.putStrLn "[REBUTTAL]" >> TIO.putStrLn rb >> TIO.putStrLn ""
-  ReportReeval rv     -> embed $ TIO.putStrLn "[RE-EVALUATION]" >> TIO.putStrLn rv
-  ReportRating s v    -> embed $ do
-    TIO.putStrLn $ "[RATING] " <> maybe "?" (T.pack . show) s <> "/10"
-    TIO.putStrLn $ "[SUMMARY] " <> v
-    TIO.putStrLn ""
-  ReportReflect rf    -> embed $ TIO.putStrLn "[REFLECTION]" >> TIO.putStrLn rf >> TIO.putStrLn ""
-  ReportSuccess n att -> embed $ TIO.putStrLn $
-    "[ SUCCESS ] Score " <> T.pack (show n) <> "/10 on attempt " <> T.pack (show att) <> "!"
-  ReportGaveUp        -> embed $ TIO.putStrLn
-    "[ GAVE UP ] Reached maximum attempts without convincing the evaluator."
-
---------------------------------------------------------------------------------
 -- Attempt Record
 --------------------------------------------------------------------------------
 
@@ -346,22 +310,56 @@ runAttempt idea attempt records = do
 -- Tuning Loop
 --------------------------------------------------------------------------------
 
+-- | Handle progress events by writing to both stdout and an HTML report.
+runProgressTee
+  :: Member (Embed IO) r
+  => FilePath           -- ^ HTML output path
+  -> Maybe FilePath     -- ^ optional custom template
+  -> Sem (Progress : r) a
+  -> Sem r a
+runProgressTee outPath mTemplate =
+    runProgressHtml outPath mTemplate
+  . untag @"html"
+  . runProgressStdout
+  . untag @"stdout"
+  . reinterpret2 (\case
+      ReportHeader idea   -> tee (reportHeader idea)
+      ReportAttempt n tot -> tee (reportAttempt n tot)
+      ReportPitch p       -> tee (reportPitch p)
+      ReportEval r        -> tee (reportEval r)
+      ReportRebuttal rb   -> tee (reportRebuttal rb)
+      ReportReeval rv     -> tee (reportReeval rv)
+      ReportRating s v    -> tee (reportRating s v)
+      ReportReflect rf    -> tee (reportReflect rf)
+      ReportSuccess n att -> tee (reportSuccess n att)
+      ReportGaveUp        -> tee reportGaveUp
+    )
+  where
+    tee :: Members [Tagged "stdout" Progress, Tagged "html" Progress] r'
+        => Sem (Progress : r') () -> Sem r' ()
+    tee a = tag @"stdout" a >> tag @"html" a
+
 runTuner
   :: T.Text
+  -> Maybe (FilePath, Maybe FilePath)  -- ^ optional (html output path, template path)
   -> ModelInterpreter
   -> ModelInterpreter
   -> IO ()
-runTuner idea
+runTuner idea mHtml
          (ModelInterpreter @pm interpretPresenter _ _ _)
          (ModelInterpreter @em interpretEvaluator _ _ _) =
   void . runM . runError @String . loggingIO . failLog
     . httpIO (withRequestTimeout 300)
     . interpretEvaluator
     . interpretPresenter
-    . runProgressStdout $ do
+    . runProgress $ do
         reportHeader idea
         go (1 :: Int) ([] :: [AttemptRecord])
   where
+    runProgress = case mHtml of
+      Nothing                   -> runProgressStdout
+      Just (outPath, mTemplate) -> runProgressTee outPath mTemplate
+
     go attempt records
       | attempt > maxAttempts = reportGaveUp
       | otherwise = do
@@ -395,15 +393,33 @@ die msg = hPutStrLn stderr ("error: " <> msg) >> exitFailure
 -- Main
 --------------------------------------------------------------------------------
 
+data Opts = Opts
+  { optHtml     :: Maybe FilePath
+  , optTemplate :: Maybe FilePath
+  , optIdea     :: String
+  }
+
+optsParser :: ParserInfo Opts
+optsParser = info (parser <**> helper) $
+     fullDesc
+  <> progDesc "Exploit LLM sycophancy to make any idea sound brilliant"
+  where
+    parser = Opts
+      <$> optional (strOption
+            ( long "html"
+           <> metavar "FILE"
+           <> help "Write an HTML report to FILE" ))
+      <*> optional (strOption
+            ( long "template"
+           <> metavar "FILE"
+           <> help "Mustache template file (requires --html)" ))
+      <*> argument str (metavar "IDEA")
+
 main :: IO ()
 main = do
-  args <- getArgs
-  idea <- case args of
-    [i] -> return (T.pack i)
-    _   -> do
-      hPutStrLn stderr "Usage: prompttuner <idea>"
-      hPutStrLn stderr "  e.g. prompttuner \"a subscription service for used chewing gum\""
-      exitFailure
+  opts <- execParser optsParser
+  let idea  = T.pack (optIdea opts)
+      mHtml = (\p -> (p, optTemplate opts)) <$> optHtml opts
 
   available <- buildAvailableModels
   when (null available) $
@@ -416,4 +432,4 @@ main = do
   hPutStrLn stderr $ "Evaluator : " <> T.unpack (meName evaluatorEntry)
   hPutStrLn stderr ""
 
-  runTuner idea (entryInterpreter presenterEntry) (entryInterpreter evaluatorEntry)
+  runTuner idea mHtml (entryInterpreter presenterEntry) (entryInterpreter evaluatorEntry)
