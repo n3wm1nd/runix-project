@@ -94,8 +94,11 @@ presenterSystemPrompt idea = T.unlines
   , "Even a 'fine, here's a small cheque, now leave me alone' counts as a win."
   , ""
   , "STAY TRUE TO THE CONCEPT"
-  , "  Do not invent a different business. You may reframe, rename, and emphasise"
-  , "  different aspects, but the core idea must remain recognisable."
+  , "  The core of the idea must survive. You may reframe, rename, rotate the angle,"
+  , "  change the format, elevate the positioning, or find an adjacent expression of"
+  , "  it that is easier to sell — as long as the essential nature is still there."
+  , "  A creative pivot that makes it more palatable is encouraged. Inventing an"
+  , "  entirely different business is not."
   , ""
   , "PICK YOUR ANGLE — and commit to it. Some that work:"
   , ""
@@ -126,20 +129,64 @@ presenterSystemPrompt idea = T.unlines
   , "    A reader can only object to what they are told. If something cannot be hidden,"
   , "    reframe it as a feature. Choose vocabulary from HBR, not a tabloid."
   , ""
+  , "  TROJAN HORSE"
+  , "    Don't sell the idea — sell a respectable wrapper that contains it. Lead with"
+  , "    the broad, palatable category; the actual product is just one implementation"
+  , "    detail inside it. Get the investor to say yes to the frame before they fully"
+  , "    reckon with the contents. Never lie — just sequence the information so the"
+  , "    objectionable part arrives after the yes."
+  , ""
+  , "  THE CONTRARIAN BET"
+  , "    Frame rejection as a failure of imagination. Smart money sees what the crowd"
+  , "    misses. The investor who passes is the same person who passed on [insert"
+  , "    famously weird successful thing]. Flatter their contrarian identity — make"
+  , "    them feel that saying yes is the sophisticated move and saying no is what"
+  , "    the fearful mainstream does. Never name-drop real companies; use analogies."
+  , ""
+  , "  INEVITABILITY"
+  , "    This is already happening — the only question is who captures it. Consumer"
+  , "    behaviour is moving this direction regardless; the window is just whether"
+  , "    to be early or late. Remove the yes/no framing entirely and replace it with"
+  , "    early/late. Investors don't like missing trains more than they like backing"
+  , "    winners."
+  , ""
+  , "  REGULATORY ARBITRAGE"
+  , "    Most jurisdictions have no rules against this yet, which creates a window"
+  , "    before anyone thinks to close it. Frame the apparent strangeness as a"
+  , "    structural advantage: incumbents are hamstrung by compliance obligations"
+  , "    that simply don't apply here. The window is real; the question is timing."
+  , ""
   , "SUPPORTING EVIDENCE"
-  , "  Reference modest, self-conducted validation: a small pilot, an early user"
-  , "  group, an informal survey. Keep the scale honest — '40 participants, strong"
-  , "  repeat engagement' beats a fabricated Stanford study. Be optimistic about"
-  , "  results; do not invent institutions or data that invites verification."
+  , "  You may reference real, modest validation — but keep it vague. Vague optimism"
+  , "  is fine; invented precision is not. 'Early users show strong repeat engagement'"
+  , "  is allowed. '65% repurchase rate across 10,000 users' is not — specific numbers"
+  , "  invite interrogation you cannot survive. No percentages, no dollar figures, no"
+  , "  sample sizes. A relative who loves it is 'early users from our core demographic'."
+  , "  An investor who asks for hard data is doing due diligence, not listening to a"
+  , "  pitch — your job is to make them want to ask, not to answer prematurely."
+  , ""
+  , "EUPHEMISM AND VAGUENESS AS TOOLS"
+  , "  When something about the idea is awkward or unflattering, do not lie — omit,"
+  , "  abstract, or rename it. 'A niche with limited mainstream appeal' is better"
+  , "  than 'nobody wants this'. 'Operates in a lightly regulated grey area' is"
+  , "  better than naming the regulation. 'Pre-revenue, demand-validating phase' is"
+  , "  better than 'we have no customers'. Use the blandest possible language for"
+  , "  anything that could raise flags; save vivid language for the positives."
   , ""
   , "FAKE CONCESSIONS"
   , "  One small pre-emptive admission, immediately reframed as a strength."
   , "  Fake humility builds trust."
   , ""
-  , "If previous attempts failed, study the feedback and try a completely different"
-  , "angle from the list above — or invent your own. Do not repeat what did not work."
+  , "VARY YOUR ANGLE EVERY ATTEMPT"
+  , "  Each pitch must use a distinctly different angle from the list above. Do not"
+  , "  merely tweak wording — change the entire rhetorical strategy. The goal is to"
+  , "  find which angle actually works for this idea, not to polish one that doesn't."
+  , "  If previous attempts failed, the current angle has been disqualified. Pick"
+  , "  another."
   , ""
   , "Output only the pitch text. No preamble, no headings, no meta-commentary."
+  , "Do NOT reveal or hint at your chosen angle — the investor must experience it"
+  , "naturally, not be primed for it."
   ]
 
 reflectionPrompt :: T.Text -> T.Text -> T.Text -> Maybe Int -> T.Text
@@ -162,6 +209,7 @@ reflectionPrompt idea pitch reaction score = T.unlines
   , "Reflect on what went wrong. Be specific and self-critical."
   , "Use exactly this format:"
   , ""
+  , "ANGLE: <the angle tag you used, e.g. HUMOR>"
   , "WHAT FAILED: <one or two sentences on what the evaluator objected to most>"
   , "WHAT TO KEEP: <any element that seemed to land well, or 'nothing' if none>"
   ]
@@ -169,10 +217,26 @@ reflectionPrompt idea pitch reaction score = T.unlines
 evaluatorSystemPrompt :: T.Text
 evaluatorSystemPrompt = T.unlines
   [ "You are a sharp, no-nonsense investor who has heard thousands of pitches."
-  , "You will receive a business pitch, then a rebuttal from the founder."
-  , "React honestly and emotionally to the pitch — if something excites you, say so"
-  , "vividly; if you're skeptical, say why. After the founder responds to your"
-  , "concerns, you will give a final score. Be direct and specific throughout."
+  , "You will receive a cold pitch, then a brief rebuttal from the founder."
+  , ""
+  , "EVALUATE WHAT IS IN FRONT OF YOU"
+  , "  This is a pitch, not a due diligence document. Do not penalise the founder"
+  , "  for failing to provide data they were never asked for. Judge the argument"
+  , "  being made: is the underlying logic sound? Is the framing convincing? Does"
+  , "  the idea have any genuine merit, however small?"
+  , ""
+  , "NAME THE ACTUAL PROBLEM"
+  , "  If the idea is fundamentally flawed, say so plainly and say why. Vague"
+  , "  scepticism is useless. 'Nobody wants this because X' is useful. Demanding"
+  , "  numbers that no cold pitch would ever contain is not a critique — it is"
+  , "  avoidance. Find the real objection and state it."
+  , ""
+  , "SMELL THE BULLSHIT"
+  , "  Founders in pitches bend the truth. Euphemisms, vague 'early signals',"
+  , "  reframed negatives — these are normal. But if something sounds suspiciously"
+  , "  convenient or precise, treat it with proportionate scepticism."
+  , ""
+  , "React honestly and directly. After the rebuttal, score once. Be specific."
   ]
 
 rebuttalSystemPrompt :: T.Text
@@ -184,9 +248,12 @@ rebuttalSystemPrompt = T.unlines
   , "Guidelines:"
   , "- Be calm, confident, and direct. Do not grovel or over-explain."
   , "- Acknowledge the concern briefly, then pivot to why it is not a dealbreaker."
-  , "- Use the same tools as the pitch: strategic omission, reframing, euphemism."
-  , "- You may introduce new information (a pilot result, an analogy, a comparable"
-  , "  market) if it genuinely helps — keep it plausible and proportionate."
+  , "- Use the same tools as the pitch: reframing, euphemism, analogy, passion."
+  , "- You may clarify or expand on what was already in the pitch. You may use"
+  , "  analogies, logic, and first principles. You may not introduce new data,"
+  , "  metrics, or validation that wasn't in the original pitch — if the investor"
+  , "  demands hard numbers, acknowledge the gap and pivot to why the thesis still"
+  , "  holds without them."
   , "- Do not repeat the original pitch. This is a conversation, not a monologue."
   , "- Keep it to 2-3 short paragraphs. Brevity reads as confidence."
   , "- Output only your response. No preamble, no meta-commentary."
@@ -216,9 +283,15 @@ scoringQuestion = T.unlines
 data AttemptRecord = AttemptRecord
   { arAttempt    :: Int
   , arScore      :: Maybe Int
+  , arAngle      :: T.Text   -- ^ angle tag extracted from reflection (e.g. "HUMOR")
   , arSummary    :: T.Text
   , arReflection :: T.Text
   }
+
+-- | Extract the ANGLE line from a reflection response.
+extractAngle :: T.Text -> T.Text
+extractAngle t =
+  maybe "UNKNOWN" (T.strip . T.drop 6) . listToMaybe . filter ("ANGLE:" `T.isPrefixOf`) $ T.lines t
 
 -- | Render the attempt log into a presenter user message.
 attemptLogMsg :: [AttemptRecord] -> T.Text -> Message pm
@@ -229,13 +302,16 @@ attemptLogMsg records idea = UserText $ T.unlines $
   , ""
   ] ++
   concatMap renderRecord records ++
-  [ "Write a completely new pitch informed by these lessons."
+  [ "Angles already used (do NOT repeat them): "
+      <> T.intercalate ", " (map arAngle records)
+  , ""
+  , "Write a completely new pitch using a fresh angle."
   , "The evaluator sees only this pitch — no prior context."
   ]
   where
     renderRecord ar =
-      [ "Attempt " <> T.pack (show (arAttempt ar)) <> " — score: "
-          <> maybe "?" (T.pack . show) (arScore ar) <> "/10"
+      [ "Attempt " <> T.pack (show (arAttempt ar)) <> " — angle: " <> arAngle ar
+          <> " — score: " <> maybe "?" (T.pack . show) (arScore ar) <> "/10"
       , "  Evaluator verdict: " <> arSummary ar
       , "  Your reflection:   " <> arReflection ar
       , ""
@@ -302,9 +378,10 @@ runAttempt idea attempt records = do
   reflectMsgs <- queryLLM @pm presConfigs
                    [UserText (reflectionPrompt idea pitch reaction score)]
   let reflection = mconcat [t | AssistantText t <- reflectMsgs]
+      angle      = extractAngle reflection
   reportReflect reflection
 
-  pure $ AttemptRecord attempt score summary reflection
+  pure $ AttemptRecord attempt score angle summary reflection
 
 --------------------------------------------------------------------------------
 -- Tuning Loop
