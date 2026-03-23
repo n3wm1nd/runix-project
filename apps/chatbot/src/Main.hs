@@ -60,10 +60,6 @@ import qualified Data.ByteString as BS
 
 -- GLM4.5 model with XML-style tool calls (running on local llama.cpp server)
 data GLM45 = GLM45 deriving (Show, Eq)
-instance Provider (Model GLM45 LlamaCpp) where
-    type ProviderRequest (Model GLM45 LlamaCpp) = OpenAIRequest
-    type ProviderResponse (Model GLM45 LlamaCpp) = OpenAIResponse
-
 instance ModelName (Model GLM45 LlamaCpp) where
     modelName (Model _ _) = "glm-4-9b-chat"
 
