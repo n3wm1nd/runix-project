@@ -34,6 +34,7 @@ import Polysemy.Fail
 import Polysemy.Tagged
 
 import Runix.Runner (httpIO, withRequestTimeout, loggingIO, failLog)
+import Runix.Time (timeIO, sleepIO)
 import Runix.LLM (LLM, queryLLM)
 import UniversalLLM (Message(..), ModelConfig(..), ProviderOf, SupportsSystemPrompt)
 
@@ -427,6 +428,8 @@ runTuner idea mHtml
          (ModelInterpreter @em interpretEvaluator _ _ _) =
   void . runM . runError @String . loggingIO . failLog
     . httpIO (withRequestTimeout 300)
+    . timeIO
+    . sleepIO
     . interpretEvaluator
     . interpretPresenter
     . runProgress $ do

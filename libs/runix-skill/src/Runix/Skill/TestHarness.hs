@@ -54,7 +54,7 @@ mockHTTPSequence
   -> Sem r a
 mockHTTPSequence fixtures action =
   evalState (0 :: Int) $
-  interpretStreamingStateful onStart onFetch onClose $
+  interpretStreamingStateful id onStart onFetch onClose $
   interpret @HTTP (\case
     HTTPEff.HttpRequest _ ->
       return $ Right $ HTTPResponse 200
