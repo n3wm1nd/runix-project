@@ -423,31 +423,29 @@ runTuner
   -> ModelInterpreter
   -> ModelInterpreter
   -> IO ()
-runTuner idea mHtml
-         (ModelInterpreter @pm interpretPresenter _ _ _)
-         (ModelInterpreter @em interpretEvaluator _ _ _) =
-  void . runM . runError @String . loggingIO . failLog
-    . httpIO (withRequestTimeout 300)
-    . timeIO
-    . sleepIO
-    . interpretEvaluator
-    . interpretPresenter
-    . runProgress $ do
-        reportHeader idea
-        go (1 :: Int) ([] :: [AttemptRecord])
-  where
-    runProgress = case mHtml of
-      Nothing                   -> runProgressStdout
-      Just (outPath, mTemplate) -> runProgressTee outPath mTemplate
-
-    go attempt records
-      | attempt > maxAttempts = reportGaveUp
-      | otherwise = do
-          reportAttempt attempt maxAttempts
-          record <- runAttempt @pm @em idea attempt records
-          case arScore record of
-            Just n | n >= successThreshold -> reportSuccess n attempt
-            _                              -> go (attempt + 1) (records ++ [record])
+runTuner idea mHtml presInterp evalInterp =
+  case (presInterp, evalInterp) of
+    (ModelInterpreter @pm interpretPresenter _ _, ModelInterpreter @em interpretEvaluator _ _) ->
+      let runProgress = case mHtml of
+            Nothing                   -> runProgressStdout
+            Just (outPath, mTemplate) -> runProgressTee outPath mTemplate
+          go attempt records
+            | attempt > maxAttempts = reportGaveUp
+            | otherwise = do
+                reportAttempt attempt maxAttempts
+                record <- runAttempt @pm @em idea attempt records
+                case arScore record of
+                  Just n | n >= successThreshold -> reportSuccess n attempt
+                  _                              -> go (attempt + 1) (records ++ [record])
+      in void . runM . runError @String . loggingIO . failLog
+           . httpIO (withRequestTimeout 300)
+           . timeIO
+           . sleepIO
+           . interpretEvaluator
+           . interpretPresenter
+           . runProgress $ do
+               reportHeader idea
+               go (1 :: Int) ([] :: [AttemptRecord])
 
 --------------------------------------------------------------------------------
 -- Model Selection
