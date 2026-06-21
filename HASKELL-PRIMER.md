@@ -300,9 +300,31 @@ a constraint like `Ord a`, saying "the effect row `r` must include `Logging`."
 
 ## Effects in Runix (Polysemy)
 
-Runix uses an effect system called Polysemy. The core idea: instead of a
-function directly doing I/O, it *declares* what capabilities it needs, and
-a separate interpreter decides how to fulfill them.
+Runix uses an effect system called Polysemy. Before getting into the
+mechanics, two ways to think about what effects *are*:
+
+**Effects as the third channel.** A function has three interfaces: the
+parameters it accepts, the value it returns, and the external things it
+touches — files, databases, network, time. Conventional languages make the
+first two explicit in the type signature and leave the third invisible.
+Effect constraints make all three explicit. `Members '[FileSystem, Database,
+Logging] r =>` is not just documentation — it is a compiler-enforced
+declaration of everything this function can reach outside its own
+parameters.
+
+**Effects as vocabulary.** `Members '[Wiki, LLM, Fail] r` doesn't just
+mean "this function needs these capabilities." It defines the *language
+available inside this function* — the complete set of operations it can
+perform. Nothing else exists in that context. A function that processes
+documents and talks to an LLM lives in a world where those are the only
+verbs. It cannot reach for the filesystem, the network, or a database
+because those words don't exist in its vocabulary. When you read a
+`Members` constraint, you're reading a precise description of that
+function's world.
+
+The core idea: instead of a function directly doing I/O, it *declares*
+what capabilities it needs, and a separate interpreter decides how to
+fulfill them.
 
 ### Defining an Effect
 
