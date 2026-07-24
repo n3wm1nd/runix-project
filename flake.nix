@@ -23,30 +23,6 @@
       pkgs = nixpkgs.legacyPackages.${system};
       haskellPackages = pkgs.haskellPackages;
 
-      # Override cabal-install to version 3.14.2.0 for HLS compatibility
-      # Use callCabal2nix to automatically generate proper derivations
-      cabalSrc = pkgs.fetchFromGitHub {
-        owner = "haskell";
-        repo = "cabal";
-        rev = "cabal-install-v3.14.2.0";
-        hash = "sha256-0hUwkTYaW2grVTJU9VJtY7iBbbWBsOrCPHkMEy0hKUM=";
-      };
-
-      haskellPackages314 = haskellPackages.override {
-        overrides = self: super: {
-          Cabal-syntax = pkgs.haskell.lib.dontCheck (self.callCabal2nix "Cabal-syntax" "${cabalSrc}/Cabal-syntax" {});
-          Cabal = pkgs.haskell.lib.dontCheck (self.callCabal2nix "Cabal" "${cabalSrc}/Cabal" {});
-          Cabal-described = pkgs.haskell.lib.dontCheck (self.callCabal2nix "Cabal-described" "${cabalSrc}/Cabal-described" {});
-          Cabal-QuickCheck = pkgs.haskell.lib.dontCheck (self.callCabal2nix "Cabal-QuickCheck" "${cabalSrc}/Cabal-QuickCheck" {});
-          Cabal-tests = pkgs.haskell.lib.dontCheck (self.callCabal2nix "Cabal-tests" "${cabalSrc}/Cabal-tests" {});
-          Cabal-tree-diff = pkgs.haskell.lib.dontCheck (self.callCabal2nix "Cabal-tree-diff" "${cabalSrc}/Cabal-tree-diff" {});
-          cabal-install-solver = pkgs.haskell.lib.dontCheck (self.callCabal2nix "cabal-install-solver" "${cabalSrc}/cabal-install-solver" {});
-          cabal-install = pkgs.haskell.lib.compose.doJailbreak (pkgs.haskell.lib.dontCheck (self.callCabal2nix "cabal-install" "${cabalSrc}/cabal-install" {}));
-        };
-      };
-
-      cabal-install-3-14 = haskellPackages314.cabal-install;
-
       builder = import ./builder.nix {pkgs = nixpkgs.legacyPackages.${system};};
       runix = runix-flake.packages.${system}.runix;
       universal-llm = universal-llm-flake.packages.${system}.universal-llm;
@@ -77,7 +53,7 @@
             haskellPackages.conduit-extra
             haskellPackages.exceptions
             haskellPackages.pandoc
-            cabal-install-3-14
+            pkgs.cabal-install
             pkgs.cabal2nix
           ];
 #          shellHook = ''

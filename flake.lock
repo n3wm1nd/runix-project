@@ -2,11 +2,11 @@
   "nodes": {
     "nixpkgs": {
       "locked": {
-        "lastModified": 1768127708,
-        "narHash": "sha256-1Sm77VfZh3mU0F5OqKABNLWxOuDeHIlcFjsXeeiPazs=",
+        "lastModified": 1784796856,
+        "narHash": "sha256-wWFrV5/Qbm+lyt5x20E/bSbfJiGKMo4RCxZV8cl/WZI=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "ffbc9f8cbaacfb331b6017d5a5abb21a492c9a38",
+        "rev": "e2587caef70cea85dd97d7daab492899902dbf5d",
         "type": "github"
       },
       "original": {
@@ -33,11 +33,11 @@
         "universal-llm-flake": "universal-llm-flake"
       },
       "locked": {
-        "lastModified": 1784213928,
-        "narHash": "sha256-XFmjbcR2XT5FcMPKsggNKDUar1ddMeg37zeFwdEr6pE=",
+        "lastModified": 1784867751,
+        "narHash": "sha256-+Hc2uI75NgvCSqleaAYqoGBqc8K9Csh+XUxcwgtFsoM=",
         "owner": "n3wm1nd",
         "repo": "runix",
-        "rev": "28d7f4074c5bb93575528eeb2f04518f6d7c80bc",
+        "rev": "9f58648336600c9ada82ec4a324acfeba8af9147",
         "type": "github"
       },
       "original": {
@@ -309,11 +309,11 @@
         "sse-parser-src": "sse-parser-src_6"
       },
       "locked": {
-        "lastModified": 1784213720,
-        "narHash": "sha256-4LH5GGNcvLRs7qBw8TOlVXnCCCxviYRYv9Hpi3kLqN0=",
+        "lastModified": 1784867069,
+        "narHash": "sha256-sznX0MhTSe8hAmVefezf07u/uy4zHMBHsqZ60bUm2CA=",
         "owner": "n3wm1nd",
         "repo": "universal-llm",
-        "rev": "c4ff70482e930e527065c1cfed40109b3af658f2",
+        "rev": "e159b2d1b52a429fd9eda7c4cafb7bb4480efc13",
         "type": "github"
       },
       "original": {
